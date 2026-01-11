@@ -1,0 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ExoLex Global Styles - RTL Support
+═══════════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-rgb: 255, 255, 255;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html {
+  direction: rtl;
+}
+
+body {
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+  background: rgb(var(--background-rgb));
+  color: rgb(var(--foreground-rgb));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Form Styles
+═══════════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
+  .input-field {
+    @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all text-right;
+  }
+
+  .input-field-ltr {
+    @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all text-left;
+    direction: ltr;
+  }
+
+  .btn-primary {
+    @apply w-full bg-primary-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply w-full bg-white text-primary-600 py-3 px-6 rounded-lg font-medium border-2 border-primary-600 hover:bg-primary-50 transition-colors;
+  }
+
+  .card {
+    @apply bg-white rounded-2xl shadow-lg p-6;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-gray-700 mb-2;
+  }
+
+  .error-text {
+    @apply text-red-500 text-sm mt-1;
+  }
+
+  .link {
+    @apply text-primary-600 hover:text-primary-700 font-medium;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   OTP Input Styles
+═══════════════════════════════════════════════════════════════════════════════ */
+
+.otp-input {
+  @apply w-12 h-14 text-center text-2xl font-bold border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition-all;
+  direction: ltr;
+}
+
+.otp-container {
+  @apply flex gap-2 justify-center;
+  direction: ltr;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Animation
+═══════════════════════════════════════════════════════════════════════════════ */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
