@@ -1,119 +1,444 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import toast from 'react-hot-toast'
+import { 
+  Inbox, Bell, MessageSquare, RefreshCw, Eye, Trash2, 
+  CheckCircle, FileText, Calendar, CreditCard, AlertTriangle,
+  ChevronLeft, Search, Filter
+} from 'lucide-react'
+import Link from 'next/link'
 
-export default function SupportPage() {
-  const router = useRouter()
-  const [isLoading, setIsLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'tickets' | 'new' | 'share'>('tickets')
-  const [tickets, setTickets] = useState<any[]>([])
-  const [affiliateCode, setAffiliateCode] = useState('')
-  const [referralStats, setReferralStats] = useState({ total: 0, subscribed: 0 })
-  const [newTicket, setNewTicket] = useState({ subject: '', category: 'technical', priority: 'medium', description: '' })
-  const [userId, setUserId] = useState<string | null>(null)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Types
+// ═══════════════════════════════════════════════════════════════════════════════
+interface Message {
+  id: string
+  request_id: string
+  sender_type: string
+  sender_name: string
+  content: string
+  is_read: boolean
+  created_at: string
+  request?: {
+    ticket_number: string
+    title: string
+  }
+}
 
-  useEffect(() => { loadData() }, [])
+interface Notification {
+  id: string
+  title: string
+  body: string
+  icon: string
+  notification_type: string
+  request_id: string
+  action_url: string
+  is_read: boolean
+  created_at: string
+}
 
-  const loadData = async () => {
+// ═══════════════════════════════════════════════════════════════════════════════
+// Config
+// ═══════════════════════════════════════════════════════════════════════════════
+const notificationIcons: Record<string, { icon: any; color: string; bgColor: string }> = {
+  new_message: { icon: MessageSquare, color: 'text-blue-600', bgColor: 'bg-blue-100' },
+  request_update: { icon: FileText, color: 'text-amber-600', bgColor: 'bg-amber-100' },
+  appointment: { icon: Calendar, color: 'text-purple-600', bgColor: 'bg-purple-100' },
+  reminder: { icon: Bell, color: 'text-orange-600', bgColor: 'bg-orange-100' },
+  document_required: { icon: FileText, color: 'text-red-600', bgColor: 'bg-red-100' },
+  payment: { icon: CreditCard, color: 'text-green-600', bgColor: 'bg-green-100' },
+  case_update: { icon: FileText, color: 'text-indigo-600', bgColor: 'bg-indigo-100' },
+  system: { icon: Bell, color: 'text-gray-600', bgColor: 'bg-gray-100' },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Main Component
+// ═══════════════════════════════════════════════════════════════════════════════
+export default function InboxPage() {
+  const [lawyerId, setLawyerId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  
+  const [activeTab, setActiveTab] = useState<'inbox' | 'notifications' | 'support'>('inbox')
+  const [messages, setMessages] = useState<Message[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Load Data
+  // ═══════════════════════════════════════════════════════════════════════════════
+  useEffect(() => {
+    const id = localStorage.getItem('exolex_lawyer_id')
+    if (id) {
+      setLawyerId(id)
+      loadData(id)
+    } else {
+      setLoading(false)
+    }
+  }, [])
+
+  const loadData = async (id: string) => {
     try {
-      const id = localStorage.getItem('exolex_lawyer_id')
-      if (!id) { router.push('/auth/lawyer-login'); return }
-      const uId = localStorage.getItem('exolex_user_id')
-      setUserId(uId)
+      setLoading(true)
+      await Promise.all([
+        loadMessages(id),
+        loadNotifications(id)
+      ])
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-      const { data: lawyer } = await supabase.from('lawyers').select('affiliate_code, user_id').eq('id', id).single()
-      if (lawyer) {
-        setAffiliateCode(lawyer.affiliate_code || '')
-        if (lawyer.user_id) setUserId(lawyer.user_id)
-        
-        const { data: ticketsData } = await supabase.from('support_tickets').select('*').eq('user_id', lawyer.user_id || uId).order('created_at', { ascending: false })
-        setTickets(ticketsData || [])
+  const loadMessages = async (id: string) => {
+    // جلب الرسائل من العملاء
+    const { data } = await supabase
+      .from('request_client_messages')
+      .select(`
+        *,
+        request:request_id (ticket_number, title)
+      `)
+      .eq('sender_type', 'member')
+      .order('created_at', { ascending: false })
+      .limit(50)
+    
+    // Filter messages for requests assigned to this lawyer
+    const { data: requests } = await supabase
+      .from('service_requests')
+      .select('id')
+      .eq('assigned_lawyer_id', id)
+    
+    const requestIds = new Set(requests?.map(r => r.id) || [])
+    const filteredMessages = (data || []).filter(m => requestIds.has(m.request_id))
+    
+    setMessages(filteredMessages)
+  }
 
-        if (lawyer.affiliate_code) {
-          const { data: refs } = await supabase.from('referrals').select('status').eq('affiliate_code_used', lawyer.affiliate_code)
-          setReferralStats({ total: refs?.length || 0, subscribed: refs?.filter(r => r.status === 'subscribed').length || 0 })
-        }
+  const loadNotifications = async (id: string) => {
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('recipient_type', 'lawyer')
+      .eq('recipient_id', id)
+      .order('created_at', { ascending: false })
+      .limit(50)
+    
+    setNotifications(data || [])
+  }
+
+  const handleRefresh = async () => {
+    if (!lawyerId) return
+    setRefreshing(true)
+    await loadData(lawyerId)
+    setRefreshing(false)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Actions
+  // ═══════════════════════════════════════════════════════════════════════════════
+  const markMessageAsRead = async (messageId: string) => {
+    await supabase
+      .from('request_client_messages')
+      .update({ is_read: true, read_at: new Date().toISOString() })
+      .eq('id', messageId)
+    
+    setMessages(prev => prev.map(m => 
+      m.id === messageId ? { ...m, is_read: true } : m
+    ))
+  }
+
+  const markNotificationAsRead = async (notificationId: string) => {
+    await supabase
+      .from('notifications')
+      .update({ is_read: true, read_at: new Date().toISOString() })
+      .eq('id', notificationId)
+    
+    setNotifications(prev => prev.map(n => 
+      n.id === notificationId ? { ...n, is_read: true } : n
+    ))
+  }
+
+  const markAllAsRead = async () => {
+    if (activeTab === 'inbox') {
+      const unreadIds = messages.filter(m => !m.is_read).map(m => m.id)
+      if (unreadIds.length > 0) {
+        await supabase
+          .from('request_client_messages')
+          .update({ is_read: true, read_at: new Date().toISOString() })
+          .in('id', unreadIds)
+        setMessages(prev => prev.map(m => ({ ...m, is_read: true })))
       }
-    } catch (e) { console.error(e) } finally { setIsLoading(false) }
+    } else if (activeTab === 'notifications') {
+      const unreadIds = notifications.filter(n => !n.is_read).map(n => n.id)
+      if (unreadIds.length > 0) {
+        await supabase
+          .from('notifications')
+          .update({ is_read: true, read_at: new Date().toISOString() })
+          .in('id', unreadIds)
+        setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
+      }
+    }
   }
 
-  const createTicket = async () => {
-    if (!newTicket.subject || !newTicket.description) { toast.error('يرجى تعبئة جميع الحقول'); return }
-    await supabase.from('support_tickets').insert({ ticket_number: `TKT-${Date.now().toString().slice(-8)}`, user_id: userId, user_type: 'lawyer', ...newTicket, status: 'open' })
-    toast.success('✅ تم إنشاء التذكرة')
-    setNewTicket({ subject: '', category: 'technical', priority: 'medium', description: '' })
-    setActiveTab('tickets')
-    loadData()
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Helpers
+  // ═══════════════════════════════════════════════════════════════════════════════
+  const getTimeAgo = (date: string) => {
+    const diff = Date.now() - new Date(date).getTime()
+    const minutes = Math.floor(diff / 60000)
+    const hours = Math.floor(minutes / 60)
+    const days = Math.floor(hours / 24)
+    if (days > 0) return `منذ ${days} يوم`
+    if (hours > 0) return `منذ ${hours} ساعة`
+    return `منذ ${minutes} دقيقة`
   }
 
-  const copyLink = () => { navigator.clipboard.writeText(`https://exolex.sa/register?ref=${affiliateCode}`); toast.success('✅ تم نسخ الرابط') }
+  const unreadMessagesCount = messages.filter(m => !m.is_read).length
+  const unreadNotificationsCount = notifications.filter(n => !n.is_read).length
 
-  if (isLoading) return <div className="min-h-screen bg-slate-100 flex items-center justify-center"><div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div></div>
+  // Filter by search
+  const filteredMessages = messages.filter(m => 
+    m.content.includes(searchQuery) || 
+    m.sender_name?.includes(searchQuery) ||
+    m.request?.ticket_number?.includes(searchQuery)
+  )
+
+  const filteredNotifications = notifications.filter(n =>
+    n.title.includes(searchQuery) ||
+    n.body?.includes(searchQuery)
+  )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Render
+  // ═══════════════════════════════════════════════════════════════════════════════
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-slate-100 p-6" dir="rtl">
-      <div className="max-w-6xl mx-auto">
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <h1 className="text-2xl font-bold text-slate-800">📞 مركز التواصل والدعم</h1>
-          <p className="text-slate-500 mt-1">تواصل مع فريق الدعم وشارك التطبيق</p>
+    <div className="p-6" dir="rtl">
+      {/* Header */}
+      <div className="bg-gradient-to-l from-amber-500 to-amber-600 rounded-2xl p-6 mb-6 text-white">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+            <Inbox className="w-6 h-6" />
+          </div>
+          <h1 className="text-2xl font-bold">مركز التواصل</h1>
+        </div>
+        <p className="text-amber-100">
+          كل تواصلك في مكان واحد. من هنا تتابع رسائلك مع العملاء وتستلم الإشعارات.
+        </p>
+        
+        {(unreadMessagesCount > 0 || unreadNotificationsCount > 0) && (
+          <div className="mt-4 flex items-center gap-2 bg-white/20 rounded-lg px-4 py-2 w-fit">
+            <AlertTriangle className="w-5 h-5" />
+            <span>
+              لديك {unreadMessagesCount + unreadNotificationsCount} عناصر تتطلب إجراء
+            </span>
+            <Link href="#" onClick={markAllAsRead} className="underline mr-2">
+              تعليم الكل كمقروء
+            </Link>
+          </div>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div className="flex border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('inbox')}
+            className={`flex-1 py-4 text-center font-semibold transition flex items-center justify-center gap-2 ${
+              activeTab === 'inbox' 
+                ? 'text-amber-600 border-b-2 border-amber-500 bg-amber-50' 
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Inbox className="w-5 h-5" />
+            الوارد
+            {unreadMessagesCount > 0 && (
+              <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                {unreadMessagesCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('notifications')}
+            className={`flex-1 py-4 text-center font-semibold transition flex items-center justify-center gap-2 ${
+              activeTab === 'notifications' 
+                ? 'text-amber-600 border-b-2 border-amber-500 bg-amber-50' 
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Bell className="w-5 h-5" />
+            التنبيهات
+            {unreadNotificationsCount > 0 && (
+              <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                {unreadNotificationsCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('support')}
+            className={`flex-1 py-4 text-center font-semibold transition flex items-center justify-center gap-2 ${
+              activeTab === 'support' 
+                ? 'text-amber-600 border-b-2 border-amber-500 bg-amber-50' 
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <MessageSquare className="w-5 h-5" />
+            الدعم
+          </button>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm mb-6 flex border-b">
-          {[{ k: 'tickets', i: '🎫', l: 'تذاكري', n: tickets.length }, { k: 'new', i: '➕', l: 'تذكرة جديدة' }, { k: 'share', i: '🔗', l: 'شارك التطبيق' }].map(t => (
-            <button key={t.k} onClick={() => setActiveTab(t.k as any)} className={`flex-1 px-6 py-4 text-center font-medium ${activeTab === t.k ? 'text-amber-600 border-b-2 border-amber-500 bg-amber-50' : 'text-slate-500 hover:bg-slate-50'}`}>
-              <span className="text-xl block mb-1">{t.i}</span>{t.l}{t.n !== undefined && <span className="mr-2 px-2 py-0.5 rounded-full text-xs bg-slate-200">{t.n}</span>}
+        {/* Search & Actions */}
+        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="بحث..."
+              className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="p-2 hover:bg-gray-100 rounded-lg transition"
+            >
+              <RefreshCw className={`w-5 h-5 text-gray-600 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
-          ))}
+            <button 
+              onClick={markAllAsRead}
+              className="px-4 py-2 text-sm text-amber-600 hover:bg-amber-50 rounded-lg transition"
+            >
+              تعليم الكل كمقروء
+            </button>
+          </div>
         </div>
 
-        {activeTab === 'tickets' && (
-          <div className="space-y-4">
-            {tickets.length > 0 ? tickets.map(t => (
-              <Link key={t.id} href={`/independent/support/ticket/${t.id}`} className="block bg-white rounded-xl shadow-sm p-5 hover:shadow-md">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-xs text-slate-400">#{t.ticket_number}</span>
-                  <span className={`text-xs px-2 py-1 rounded-full ${t.status === 'open' ? 'bg-blue-100 text-blue-700' : t.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{t.status === 'open' ? 'مفتوحة' : t.status === 'resolved' ? 'محلولة' : 'قيد المعالجة'}</span>
+        {/* Content */}
+        <div className="divide-y divide-gray-200">
+          {/* Inbox Tab */}
+          {activeTab === 'inbox' && (
+            <>
+              {filteredMessages.length === 0 ? (
+                <div className="p-12 text-center">
+                  <Inbox className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-700">لا توجد رسائل</h3>
+                  <p className="text-gray-500 text-sm">رسائل العملاء ستظهر هنا</p>
                 </div>
-                <h3 className="text-lg font-bold text-slate-800">{t.subject}</h3>
-                <p className="text-slate-500 text-sm mt-1 line-clamp-2">{t.description}</p>
-              </Link>
-            )) : <div className="bg-white rounded-xl p-12 text-center"><span className="text-6xl block mb-4">🎫</span><h3 className="text-xl font-bold text-slate-700">لا توجد تذاكر</h3><button onClick={() => setActiveTab('new')} className="mt-4 px-6 py-2 bg-amber-500 text-white rounded-lg">➕ تذكرة جديدة</button></div>}
-          </div>
-        )}
+              ) : (
+                filteredMessages.map((message) => (
+                  <Link
+                    key={message.id}
+                    href={`/independent/my-tasks/${message.request_id}`}
+                    onClick={() => markMessageAsRead(message.id)}
+                    className={`flex items-start gap-4 p-4 hover:bg-gray-50 transition ${
+                      !message.is_read ? 'bg-amber-50' : ''
+                    }`}
+                  >
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                      !message.is_read ? 'bg-amber-100' : 'bg-gray-100'
+                    }`}>
+                      <MessageSquare className={`w-6 h-6 ${!message.is_read ? 'text-amber-600' : 'text-gray-600'}`} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-semibold text-gray-800">
+                          رسالة من {message.sender_name || 'العميل'}
+                        </span>
+                        <span className="text-xs text-gray-500">{getTimeAgo(message.created_at)}</span>
+                      </div>
+                      <p className="text-gray-600 text-sm line-clamp-2">{message.content}</p>
+                      {message.request && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          🎫 {message.request.ticket_number} - {message.request.title}
+                        </p>
+                      )}
+                    </div>
+                    {!message.is_read && (
+                      <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
+                    )}
+                  </Link>
+                ))
+              )}
+            </>
+          )}
 
-        {activeTab === 'new' && (
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-xl font-bold text-slate-800 mb-6">➕ إنشاء تذكرة جديدة</h2>
-            <div className="space-y-5">
-              <div><label className="block text-sm font-medium text-slate-700 mb-2">الموضوع *</label><input type="text" value={newTicket.subject} onChange={e => setNewTicket({ ...newTicket, subject: e.target.value })} className="w-full px-4 py-3 border border-slate-300 rounded-xl" placeholder="عنوان مختصر" /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-slate-700 mb-2">التصنيف</label><select value={newTicket.category} onChange={e => setNewTicket({ ...newTicket, category: e.target.value })} className="w-full px-4 py-3 border border-slate-300 rounded-xl"><option value="technical">🔧 تقني</option><option value="financial">💰 مالي</option><option value="general">📋 عام</option></select></div>
-                <div><label className="block text-sm font-medium text-slate-700 mb-2">الأولوية</label><select value={newTicket.priority} onChange={e => setNewTicket({ ...newTicket, priority: e.target.value })} className="w-full px-4 py-3 border border-slate-300 rounded-xl"><option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high">عالية</option><option value="urgent">🔥 عاجلة</option></select></div>
-              </div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-2">الوصف *</label><textarea value={newTicket.description} onChange={e => setNewTicket({ ...newTicket, description: e.target.value })} rows={5} className="w-full px-4 py-3 border border-slate-300 rounded-xl resize-none" placeholder="اشرح المشكلة..." /></div>
-              <div className="flex gap-3"><button onClick={createTicket} className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl font-medium">📤 إرسال</button><button onClick={() => setActiveTab('tickets')} className="px-6 py-3 border border-slate-300 rounded-xl">إلغاء</button></div>
-            </div>
-          </div>
-        )}
+          {/* Notifications Tab */}
+          {activeTab === 'notifications' && (
+            <>
+              {filteredNotifications.length === 0 ? (
+                <div className="p-12 text-center">
+                  <Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-700">لا توجد تنبيهات</h3>
+                  <p className="text-gray-500 text-sm">التنبيهات الجديدة ستظهر هنا</p>
+                </div>
+              ) : (
+                filteredNotifications.map((notification) => {
+                  const config = notificationIcons[notification.notification_type] || notificationIcons.system
+                  const Icon = config.icon
+                  return (
+                    <div
+                      key={notification.id}
+                      onClick={() => markNotificationAsRead(notification.id)}
+                      className={`flex items-start gap-4 p-4 hover:bg-gray-50 transition cursor-pointer ${
+                        !notification.is_read ? 'bg-blue-50' : ''
+                      }`}
+                    >
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${config.bgColor}`}>
+                        <Icon className={`w-6 h-6 ${config.color}`} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-semibold text-gray-800">{notification.title}</span>
+                          <span className="text-xs text-gray-500">{getTimeAgo(notification.created_at)}</span>
+                        </div>
+                        {notification.body && (
+                          <p className="text-gray-600 text-sm">{notification.body}</p>
+                        )}
+                        {notification.action_url && (
+                          <Link 
+                            href={notification.action_url}
+                            className="text-sm text-amber-600 hover:underline mt-1 inline-block"
+                          >
+                            عرض التفاصيل ←
+                          </Link>
+                        )}
+                      </div>
+                      {!notification.is_read && (
+                        <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </>
+          )}
 
-        {activeTab === 'share' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-xl font-bold text-slate-800 mb-4">🔗 رابط الإحالة</h2>
-              {affiliateCode ? (<div className="flex gap-3"><input type="text" value={`https://exolex.sa/register?ref=${affiliateCode}`} readOnly className="flex-1 px-4 py-3 bg-slate-50 border rounded-xl" dir="ltr" /><button onClick={copyLink} className="px-6 py-3 bg-amber-500 text-white rounded-xl">📋 نسخ</button></div>) : <p className="text-slate-500 text-center py-4">لم يتم تفعيل كود الإحالة بعد</p>}
+          {/* Support Tab */}
+          {activeTab === 'support' && (
+            <div className="p-12 text-center">
+              <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-700">تواصل مع الدعم</h3>
+              <p className="text-gray-500 text-sm mb-4">
+                يمكنك التواصل مع فريق الدعم لحل أي مشكلة تقنية أو مالية
+              </p>
+              <button className="px-6 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition font-semibold">
+                فتح تذكرة دعم
+              </button>
             </div>
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-xl font-bold text-slate-800 mb-4">📊 إحصائيات الإحالات</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-blue-50 rounded-xl p-5 text-center"><span className="text-4xl font-bold text-blue-600">{referralStats.total}</span><p className="text-blue-700 mt-1">إجمالي المسجلين</p></div>
-                <div className="bg-green-50 rounded-xl p-5 text-center"><span className="text-4xl font-bold text-green-600">{referralStats.subscribed}</span><p className="text-green-700 mt-1">المشتركين</p></div>
-              </div>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )

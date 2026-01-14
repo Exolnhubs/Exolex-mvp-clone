@@ -130,8 +130,6 @@ export default function AffiliatePage() {
           }
         }
 
-        // Fetch member first
-        const { data: memberData } = await supabase.from('members').select('id').eq('user_id', userId).single()
         
         // Fetch subscription
         const { data: subData } = await supabase.from('subscriptions').select('*').eq('member_id', memberData?.id).eq('status', 'active').single()

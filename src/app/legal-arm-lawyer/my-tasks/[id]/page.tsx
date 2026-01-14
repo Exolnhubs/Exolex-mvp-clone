@@ -33,7 +33,7 @@ export default function MyTasksPage() {
   const [lawyerId, setLawyerId] = useState<string | null>(null)
 
   useEffect(() => {
-    const id = localStorage.getItem('exolex_lawyer_id')
+    const id = localStorage.getItem('exolex_arm_lawyer_id')
     if (id) {
       setLawyerId(id)
       fetchTasks(id)
@@ -84,7 +84,7 @@ export default function MyTasksPage() {
   // 🚀 فتح صفحة معالجة الطلب (Dashboard)
   // ═══════════════════════════════════════════════════════════════
   const openTaskDashboard = (taskId: string) => {
-    router.push(`/independent/my-tasks/${taskId}`)
+    router.push(`/legal-arm-lawyer/my-tasks/${taskId}`)
   }
 
   const getTimeAgo = (date: string) => {

@@ -64,7 +64,6 @@ const STATUS_CONFIG: { [key: string]: { label: string; color: string; bg: string
   // حالات الخدمات الإضافية
   'pending_quote': { label: 'بانتظار عرض السعر', color: '#F59E0B', bg: '#FEF3C7', icon: '💰' },
   'quoted': { label: 'تم تقديم عرض', color: '#8B5CF6', bg: '#EDE9FE', icon: '📋' },
-  'pending_payment': { label: 'بانتظار الدفع', color: '#EC4899', bg: '#FCE7F3', icon: '💳' },
   'paid': { label: 'مدفوع', color: '#10B981', bg: '#D1FAE5', icon: '✓' },
 }
 

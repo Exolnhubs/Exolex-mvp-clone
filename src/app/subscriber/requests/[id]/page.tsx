@@ -1,23 +1,66 @@
 'use client'
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 📋 تفاصيل الطلب - المشترك
-// 📅 تاريخ التحديث: 6 يناير 2026
-// 🎯 التحديثات: أرشيف NOLEX + تعليقات المحامي + رد المحامي الرسمي + سجل الطلب
+// 📋 تفاصيل الطلب - المشترك (مع جدول العروض + Modal)
+// 📅 تاريخ التحديث: 14 يناير 2026
+// 🎯 التحديثات: جدول مختصر للعروض + Modal للتفاصيل + إصلاح خطأ القبول
 // 📁 المسار: src/app/subscriber/requests/[id]/page.tsx
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
-import Image from 'next/image'
 import {
-  ArrowRight, Clock, User, FileText, Calendar, MessageSquare,
-  Send, Paperclip, Bot, AlertCircle, CheckCircle, XCircle,
-  Download, Eye, Timer, Star, ChevronDown, ChevronUp,
-  MessageCircle, Reply, ThumbsUp, ThumbsDown, History
+  ArrowRight, Clock, User, FileText, Calendar,
+  Bot, AlertCircle, CheckCircle, XCircle,
+  Timer, Star, ChevronDown, ChevronUp,
+  History, DollarSign, CreditCard, Award, Eye, X
 } from 'lucide-react'
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Interfaces
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface ServiceQuote {
+  id: string
+  quote_number: string
+  lawyer_id: string
+  service_description: string
+  price: number
+  platform_fee_amount: number
+  vat_amount: number
+  total_amount: number
+  lawyer_earnings: number
+  installments_count: number
+  status: 'pending' | 'accepted' | 'rejected'
+  valid_until: string
+  created_at: string
+  quote_type: 'single' | 'multiple'
+  accepted_at?: string
+  rejected_at?: string
+  lawyer?: {
+    id: string
+    lawyer_code: string
+    full_name: string
+    rating_average: number
+    rating_count: number
+    years_of_experience: number
+    city: string
+  }
+}
+
+interface QuoteInstallment {
+  id: string
+  quote_id: string
+  installment_number: number
+  description: string
+  percentage: number
+  amount: number
+  status: 'pending' | 'not_due' | 'paid' | 'released'
+  paid_at: string | null
+  created_at: string
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // التكوينات
@@ -29,6 +72,18 @@ const statusConfig: Record<string, { label: string; color: string; icon: any; de
     color: 'bg-gray-100 text-gray-700', 
     icon: Clock,
     description: 'طلبك قيد المراجعة وسيتم تعيين محامي قريباً'
+  },
+  pending_quotes: { 
+    label: 'بانتظار عروض الأسعار', 
+    color: 'bg-blue-100 text-blue-700', 
+    icon: DollarSign,
+    description: 'طلبك متاح للمحامين لتقديم عروضهم'
+  },
+  pending_assignment: { 
+    label: 'بانتظار التعيين', 
+    color: 'bg-orange-100 text-orange-700', 
+    icon: Clock,
+    description: 'طلبك قيد المراجعة'
   },
   assigned: { 
     label: 'تم التعيين', 
@@ -43,16 +98,10 @@ const statusConfig: Record<string, { label: string; color: string; icon: any; de
     description: 'المحامي قبل طلبك ويعمل عليه'
   },
   in_progress: { 
-    label: 'قيد العمل', 
+    label: 'قيد التنفيذ', 
     color: 'bg-indigo-100 text-indigo-700', 
     icon: Timer,
     description: 'المحامي يعمل على طلبك حالياً'
-  },
-  awaiting_response: { 
-    label: 'بانتظار ردك', 
-    color: 'bg-orange-100 text-orange-700', 
-    icon: MessageCircle,
-    description: 'المحامي أرسل لك سؤالاً وينتظر ردك'
   },
   completed: { 
     label: 'مكتمل', 
@@ -94,7 +143,6 @@ export default function SubscriberRequestDetailsPage() {
   const params = useParams()
   const router = useRouter()
   const requestId = params.id as string
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // States
   const [isLoading, setIsLoading] = useState(true)
@@ -102,29 +150,20 @@ export default function SubscriberRequestDetailsPage() {
   const [lawyer, setLawyer] = useState<any>(null)
   const [currentUser, setCurrentUser] = useState<{ id: string; memberId: string; name: string } | null>(null)
 
-  // 🔴 جديد: محادثة NOLEX
+  // العروض والدفعات
+  const [quotes, setQuotes] = useState<ServiceQuote[]>([])
+  const [installments, setInstallments] = useState<{[quoteId: string]: QuoteInstallment[]}>({})
+  const [acceptingQuote, setAcceptingQuote] = useState<string | null>(null)
+  
+  // 🆕 Modal تفاصيل العرض
+  const [selectedQuote, setSelectedQuote] = useState<ServiceQuote | null>(null)
+  const [showQuoteModal, setShowQuoteModal] = useState(false)
+
+  // محادثة NOLEX
   const [nolexConversation, setNolexConversation] = useState<any[]>([])
   const [showNolexArchive, setShowNolexArchive] = useState(false)
 
-  // 🔴 جديد: تعليقات المحامي
-  const [lawyerComments, setLawyerComments] = useState<any[]>([])
-  const [replyingTo, setReplyingTo] = useState<string | null>(null)
-  const [replyText, setReplyText] = useState('')
-  const [sendingReply, setSendingReply] = useState(false)
-
-  // 🔴 جديد: رد المحامي الرسمي
-  const [lawyerResponse, setLawyerResponse] = useState<any>(null)
-  const [showObjectionForm, setShowObjectionForm] = useState(false)
-  const [objectionText, setObjectionText] = useState('')
-  const [sendingObjection, setSendingObjection] = useState(false)
-
-  // 🔴 جديد: التقييم
-  const [showRatingForm, setShowRatingForm] = useState(false)
-  const [rating, setRating] = useState(0)
-  const [ratingComment, setRatingComment] = useState('')
-  const [submittingRating, setSubmittingRating] = useState(false)
-
-  // 🔴 جديد: سجل الطلب
+  // سجل الطلب
   const [requestHistory, setRequestHistory] = useState<any[]>([])
 
   // ═══════════════════════════════════════════════════════════════════════════════
@@ -181,12 +220,12 @@ export default function SubscriberRequestDetailsPage() {
 
       setRequest(requestData)
 
-      // 🔴 جديد: جلب محادثة NOLEX
+      // جلب محادثة NOLEX
       if (requestData.nolex_conversation) {
         setNolexConversation(requestData.nolex_conversation)
       }
 
-      // جلب معلومات المحامي
+      // جلب معلومات المحامي المعين
       if (requestData.assigned_lawyer_id) {
         const { data: lawyerData } = await supabase
           .from('lawyers')
@@ -196,25 +235,61 @@ export default function SubscriberRequestDetailsPage() {
         setLawyer(lawyerData)
       }
 
-      // 🔴 جديد: جلب تعليقات المحامي
-      const { data: commentsData } = await supabase
-        .from('request_comments')
-        .select('*')
-        .eq('request_id', requestId)
-        .order('created_at', { ascending: true })
-      setLawyerComments(commentsData || [])
-
-      // 🔴 جديد: جلب رد المحامي الرسمي
-      const { data: responseData } = await supabase
-        .from('lawyer_responses')
+      // ═══════════════════════════════════════════════════════════════════════════════
+      // جلب عروض الأسعار من المحامين
+      // ═══════════════════════════════════════════════════════════════════════════════
+      const { data: quotesData, error: quotesError } = await supabase
+        .from('service_quotes')
         .select('*')
         .eq('request_id', requestId)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-      if (responseData) setLawyerResponse(responseData)
 
-      // 🔴 جديد: جلب سجل الطلب
+      console.log('📋 العروض:', quotesData, 'Error:', quotesError)
+
+      if (quotesData && quotesData.length > 0) {
+        // جلب بيانات المحامين بشكل منفصل
+        const lawyerIds = Array.from(new Set(quotesData.map(q => q.lawyer_id).filter(Boolean)))
+        
+        let quotesWithLawyers = quotesData
+        
+        if (lawyerIds.length > 0) {
+          const { data: lawyersData } = await supabase
+            .from('lawyers')
+            .select('id, lawyer_code, full_name, rating_average, rating_count, years_of_experience, city')
+            .in('id', lawyerIds)
+          
+          quotesWithLawyers = quotesData.map(quote => ({
+            ...quote,
+            lawyer: lawyersData?.find(l => l.id === quote.lawyer_id) || null
+          }))
+        }
+        
+        setQuotes(quotesWithLawyers)
+        console.log('📋 العروض مع المحامين:', quotesWithLawyers)
+
+        // جلب الدفعات لكل عرض
+        const quoteIds = quotesData.map(q => q.id)
+        
+        const { data: installmentsData } = await supabase
+          .from('quote_installments')
+          .select('*')
+          .in('quote_id', quoteIds)
+          .order('installment_number', { ascending: true })
+        
+        if (installmentsData) {
+          const groupedInstallments: {[quoteId: string]: QuoteInstallment[]} = {}
+          installmentsData.forEach(inst => {
+            if (!groupedInstallments[inst.quote_id]) {
+              groupedInstallments[inst.quote_id] = []
+            }
+            groupedInstallments[inst.quote_id].push(inst)
+          })
+          setInstallments(groupedInstallments)
+          console.log('📊 الدفعات:', groupedInstallments)
+        }
+      }
+
+      // جلب سجل الطلب
       const { data: historyData } = await supabase
         .from('request_history')
         .select('*')
@@ -231,120 +306,93 @@ export default function SubscriberRequestDetailsPage() {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // 🔴 جديد: إرسال رد على تعليق المحامي
+  // قبول عرض السعر - مُصحح
   // ═══════════════════════════════════════════════════════════════════════════════
 
-  const handleSendReply = async (commentId: string) => {
-    if (!replyText.trim()) return
+  const handleAcceptQuote = async (quote: ServiceQuote) => {
+    const quoteInstallments = installments[quote.id] || []
+    const firstPayment = quoteInstallments.length > 0 ? quoteInstallments[0].amount : quote.total_amount
+    
+    const confirmMsg = quoteInstallments.length > 1 
+      ? `هل أنت متأكد من قبول العرض؟\n\nالإجمالي: ${quote.total_amount.toLocaleString()} ر.س\nالدفعة الأولى: ${firstPayment.toLocaleString()} ر.س`
+      : `هل أنت متأكد من قبول العرض بقيمة ${quote.total_amount.toLocaleString()} ر.س؟`
+    
+    if (!confirm(confirmMsg)) return
 
-    setSendingReply(true)
+    setAcceptingQuote(quote.id)
+
     try {
-      // إضافة الرد
-      const { error } = await supabase.from('request_comments').insert({
-        request_id: requestId,
-        parent_id: commentId,
-        sender_type: 'subscriber',
-        sender_id: currentUser?.memberId,
-        content: replyText
-      })
-
-      if (error) throw error
-
-      // تحديث التعليق الأصلي ليكون مُرد عليه
-      await supabase
-        .from('request_comments')
-        .update({ subscriber_replied: true })
-        .eq('id', commentId)
-
-      toast.success('✅ تم إرسال الرد')
-      setReplyText('')
-      setReplyingTo(null)
-      loadData()
-    } catch (error) {
-      console.error('Error:', error)
-      toast.error('حدث خطأ في إرسال الرد')
-    } finally {
-      setSendingReply(false)
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════════
-  // 🔴 جديد: إرسال اعتراض
-  // ═══════════════════════════════════════════════════════════════════════════════
-
-  const handleSendObjection = async () => {
-    if (!objectionText.trim()) return
-
-    setSendingObjection(true)
-    try {
-      const { error } = await supabase.from('request_objections').insert({
-        request_id: requestId,
-        response_id: lawyerResponse?.id,
-        subscriber_id: currentUser?.memberId,
-        content: objectionText
-      })
-
-      if (error) throw error
-
-      // تحديث حالة الطلب
-      await supabase
-        .from('service_requests')
-        .update({ status: 'objection_raised' })
-        .eq('id', requestId)
-
-      toast.success('✅ تم إرسال الاعتراض')
-      setObjectionText('')
-      setShowObjectionForm(false)
-      loadData()
-    } catch (error) {
-      console.error('Error:', error)
-      toast.error('حدث خطأ في إرسال الاعتراض')
-    } finally {
-      setSendingObjection(false)
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════════
-  // 🔴 جديد: إرسال التقييم
-  // ═══════════════════════════════════════════════════════════════════════════════
-
-  const handleSubmitRating = async () => {
-    if (rating === 0) {
-      toast.error('يرجى اختيار تقييم')
-      return
-    }
-
-    setSubmittingRating(true)
-    try {
-      // حفظ التقييم
-      const { error } = await supabase.from('ratings').insert({
-        request_id: requestId,
-        lawyer_id: lawyer?.id,
-        subscriber_id: currentUser?.memberId,
-        rating: rating,
-        comment: ratingComment
-      })
-
-      if (error) throw error
-
-      // تحديث حالة الطلب
-      await supabase
-        .from('service_requests')
+      // 1. تحديث حالة العرض المقبول
+      const { error: updateQuoteError } = await supabase
+        .from('service_quotes')
         .update({ 
-          status: 'closed',
-          subscriber_rating: rating,
-          subscriber_feedback: ratingComment
+          status: 'accepted',
+          accepted_at: new Date().toISOString()
+        })
+        .eq('id', quote.id)
+
+      if (updateQuoteError) throw updateQuoteError
+
+      // 2. رفض باقي العروض
+      await supabase
+        .from('service_quotes')
+        .update({ 
+          status: 'rejected',
+          rejected_at: new Date().toISOString()
+        })
+        .eq('request_id', requestId)
+        .neq('id', quote.id)
+        .eq('status', 'pending')
+
+      // 3. تحديث حالة الطلب + تعيين المحامي (بدون accepted_quote_id)
+      const { error: updateRequestError } = await supabase
+        .from('service_requests')
+        .update({
+          status: 'in_progress',
+          assigned_lawyer_id: quote.lawyer_id,
+          assigned_at: new Date().toISOString(),
+          base_price: quote.price,
+          total_amount: quote.total_amount,
+          vat_amount: quote.vat_amount
         })
         .eq('id', requestId)
 
-      toast.success('✅ شكراً على تقييمك!')
-      setShowRatingForm(false)
+      if (updateRequestError) throw updateRequestError
+
+      // 4. تحديث حالة الدفعة الأولى إلى pending (مستحقة)
+      if (quoteInstallments.length > 0) {
+        await supabase
+          .from('quote_installments')
+          .update({ status: 'pending' })
+          .eq('quote_id', quote.id)
+          .eq('installment_number', 1)
+      }
+// 5. إرسال إشعار للمحامي
+try {
+  await supabase.from('notifications').insert({
+    recipient_type: 'lawyer',
+    recipient_id: quote.lawyer_id,
+    title: 'تم قبول عرضك! 🎉',
+    body: `تم قبول عرضك رقم ${quote.quote_number} بقيمة ${quote.total_amount.toLocaleString()} ر.س`,
+    icon: '✅',
+    notification_type: 'quote_accepted',
+    request_id: requestId,
+    quote_id: quote.id,
+    action_url: `/independent/tasks/${requestId}`,
+    is_read: false
+  })
+} catch (notifError) {
+  console.log('Notification error (non-critical):', notifError)
+}
+      toast.success('✅ تم قبول العرض بنجاح!')
+      setShowQuoteModal(false)
       loadData()
+
     } catch (error) {
-      console.error('Error:', error)
-      toast.error('حدث خطأ في إرسال التقييم')
+      console.error('Error accepting quote:', error)
+      toast.error('حدث خطأ في قبول العرض')
     } finally {
-      setSubmittingRating(false)
+      setAcceptingQuote(null)
     }
   }
 
@@ -354,11 +402,20 @@ export default function SubscriberRequestDetailsPage() {
 
   const formatDate = (date: string) => date ? new Date(date).toLocaleDateString('ar-SA') : '-'
   const formatDateTime = (date: string) => date ? new Date(date).toLocaleString('ar-SA') : '-'
-  const formatTime = (date: string) => date ? new Date(date).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : ''
+  const formatPrice = (amount: number) => amount ? `${amount.toLocaleString()} ر.س` : '-'
 
-  // هل يمكن للمشترك الرد على تعليق معين؟
-  const canReplyToComment = (comment: any) => {
-    return comment.sender_type === 'lawyer' && !comment.subscriber_replied
+  const isQuoteValid = (validUntil: string) => new Date(validUntil) > new Date()
+
+  const getTimeRemaining = (validUntil: string) => {
+    const diff = new Date(validUntil).getTime() - Date.now()
+    if (diff <= 0) return { text: 'منتهي', color: 'text-red-600', bg: 'bg-red-100' }
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    
+    if (days > 0) return { text: `${days} يوم ${hours} ساعة`, color: 'text-green-600', bg: 'bg-green-100' }
+    if (hours > 4) return { text: `${hours} ساعة`, color: 'text-yellow-600', bg: 'bg-yellow-100' }
+    return { text: `${hours} ساعة`, color: 'text-red-600', bg: 'bg-red-100' }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
@@ -389,6 +446,8 @@ export default function SubscriberRequestDetailsPage() {
   }
 
   const StatusIcon = statusConfig[request.status]?.icon || Clock
+  const pendingQuotes = quotes.filter(q => q.status === 'pending')
+  const acceptedQuote = quotes.find(q => q.status === 'accepted')
 
   return (
     <div className="space-y-4 pb-8">
@@ -412,6 +471,11 @@ export default function SubscriberRequestDetailsPage() {
                 <StatusIcon className="w-4 h-4" />
                 {statusConfig[request.status]?.label}
               </span>
+              {pendingQuotes.length > 0 && (
+                <span className="px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-700 flex items-center gap-1.5">
+                  💰 {pendingQuotes.length} عرض متاح
+                </span>
+              )}
             </div>
             
             <p className="text-slate-600 mb-3">{request.title || 'بدون عنوان'}</p>
@@ -439,6 +503,189 @@ export default function SubscriberRequestDetailsPage() {
         ════════════════════════════════════════════════════════════════════ */}
         <div className="lg:col-span-2 space-y-4">
           
+          {/* ════════════════════════════════════════════════════════════════════
+              🆕 جدول العروض المختصر
+          ════════════════════════════════════════════════════════════════════ */}
+          {pendingQuotes.length > 0 && !acceptedQuote && (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="bg-gradient-to-l from-amber-500 to-orange-500 text-white p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-2xl">
+                    💰
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">عروض الأسعار المتاحة</h3>
+                    <p className="text-sm opacity-90">{pendingQuotes.length} عرض من المحامين - اختر الأنسب لك</p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* جدول العروض */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="py-3 px-4 text-right text-xs font-bold text-slate-600">رقم العرض</th>
+                      <th className="py-3 px-4 text-right text-xs font-bold text-slate-600">التاريخ</th>
+                      <th className="py-3 px-4 text-right text-xs font-bold text-slate-600">المحامي</th>
+                      <th className="py-3 px-4 text-center text-xs font-bold text-slate-600">التقييم</th>
+                      <th className="py-3 px-4 text-center text-xs font-bold text-slate-600">الدفعات</th>
+                      <th className="py-3 px-4 text-left text-xs font-bold text-slate-600">الإجمالي</th>
+                      <th className="py-3 px-4 text-center text-xs font-bold text-slate-600">الصلاحية</th>
+                      <th className="py-3 px-4 text-center text-xs font-bold text-slate-600">الإجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingQuotes.map((quote, idx) => {
+                      const timeRemaining = getTimeRemaining(quote.valid_until)
+                      const isValid = isQuoteValid(quote.valid_until)
+                      const quoteInstallments = installments[quote.id] || []
+                      
+                      return (
+                        <tr key={quote.id} className={`border-t ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} ${!isValid ? 'opacity-50' : ''}`}>
+                          <td className="py-3 px-4">
+                            <span className="font-mono text-sm text-slate-700">{quote.quote_number}</span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="text-sm text-slate-600">{formatDate(quote.created_at)}</span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                {quote.lawyer?.full_name?.[0] || '؟'}
+                              </div>
+                              <div>
+                                <p className="font-bold text-blue-600 text-sm">{quote.lawyer?.lawyer_code || '-'}</p>
+                                <p className="text-xs text-slate-400">{quote.lawyer?.city || '-'}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            {quote.lawyer?.rating_average ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                                <span className="text-sm font-medium">{quote.lawyer.rating_average.toFixed(1)}</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-sm">-</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <span className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${
+                              quoteInstallments.length > 1 ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {quoteInstallments.length > 1 ? `${quoteInstallments.length} دفعات` : 'دفعة واحدة'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-left">
+                            <span className="font-bold text-green-600">{formatPrice(quote.total_amount)}</span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${timeRemaining.bg} ${timeRemaining.color}`}>
+                              {timeRemaining.text}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => { setSelectedQuote(quote); setShowQuoteModal(true); }}
+                                className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
+                                title="عرض التفاصيل"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              {isValid && (
+                                <button
+                                  onClick={() => handleAcceptQuote(quote)}
+                                  disabled={acceptingQuote === quote.id}
+                                  className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50"
+                                  title="قبول العرض"
+                                >
+                                  {acceptingQuote === quote.id ? (
+                                    <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+                                  ) : (
+                                    <CheckCircle className="w-4 h-4" />
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* العرض المقبول */}
+          {acceptedQuote && (
+            <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl shadow-sm p-6 border-2 border-green-300">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-full flex items-center justify-center text-white text-xl">
+                  ✅
+                </div>
+                <div>
+                  <h3 className="font-bold text-green-800 text-lg">تم قبول العرض</h3>
+                  <p className="text-sm text-green-600">العرض رقم {acceptedQuote.quote_number}</p>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                      {acceptedQuote.lawyer?.full_name?.[0] || '؟'}
+                    </div>
+                    <div>
+                      <p className="font-bold text-blue-600">{acceptedQuote.lawyer?.lawyer_code}</p>
+                      <p className="text-xs text-slate-500">{acceptedQuote.lawyer?.city}</p>
+                    </div>
+                  </div>
+                  <div className="text-left">
+                    <p className="text-2xl font-bold text-green-600">{formatPrice(acceptedQuote.total_amount)}</p>
+                    <p className="text-xs text-slate-500">شامل الضريبة</p>
+                  </div>
+                </div>
+                {acceptedQuote.service_description && (
+                  <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg">{acceptedQuote.service_description}</p>
+                )}
+                
+                {/* عرض الدفعات للعرض المقبول */}
+                {installments[acceptedQuote.id]?.length > 1 && (
+                  <div className="mt-4">
+                    <h4 className="font-bold text-slate-700 mb-2 text-sm">جدول الدفعات:</h4>
+                    <div className="space-y-2">
+                      {installments[acceptedQuote.id].map((inst) => (
+                        <div key={inst.id} className={`flex items-center justify-between p-2 rounded-lg ${
+                          inst.status === 'paid' ? 'bg-green-100' : inst.status === 'pending' ? 'bg-amber-100' : 'bg-slate-100'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-slate-600 text-white text-xs flex items-center justify-center">
+                              {inst.installment_number}
+                            </span>
+                            <span className="text-sm">{inst.description}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-bold">{inst.amount.toLocaleString()} ر.س</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              inst.status === 'paid' ? 'bg-green-600 text-white' : 
+                              inst.status === 'pending' ? 'bg-amber-600 text-white' : 
+                              'bg-slate-400 text-white'
+                            }`}>
+                              {inst.status === 'paid' ? 'مدفوعة' : inst.status === 'pending' ? 'مستحقة' : 'قادمة'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* معلومات الطلب */}
           <div className="bg-white rounded-xl shadow-sm p-6">
             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -465,16 +712,13 @@ export default function SubscriberRequestDetailsPage() {
               </div>
             </div>
 
-            {/* وصف الطلب */}
             <div className="bg-slate-50 p-4 rounded-lg">
               <p className="text-xs text-slate-500 mb-2">وصف الطلب</p>
               <p className="text-slate-700 whitespace-pre-wrap">{request.description || 'لا يوجد وصف'}</p>
             </div>
           </div>
 
-          {/* ════════════════════════════════════════════════════════════════════
-              🔴 جديد: أرشيف محادثة NOLEX
-          ════════════════════════════════════════════════════════════════════ */}
+          {/* أرشيف محادثة NOLEX */}
           {nolexConversation && nolexConversation.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <button
@@ -482,8 +726,8 @@ export default function SubscriberRequestDetailsPage() {
                 className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full overflow-hidden">
-                    <Image src="/nolex-avatar.jpg" alt="NOLEX" width={40} height={40} className="w-full h-full object-cover" />
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white">
+                    <Bot className="w-5 h-5" />
                   </div>
                   <div className="text-right">
                     <h3 className="font-bold text-slate-800">أرشيف محادثة NOLEX</h3>
@@ -513,239 +757,7 @@ export default function SubscriberRequestDetailsPage() {
             </div>
           )}
 
-          {/* ════════════════════════════════════════════════════════════════════
-              🔴 جديد: رد المحامي الرسمي (فوق سجل الطلب)
-          ════════════════════════════════════════════════════════════════════ */}
-          {lawyerResponse && (
-            <div className="bg-white rounded-xl shadow-sm p-6 border-2 border-green-200">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center text-white text-xl">
-                  ⚖️
-                </div>
-                <div>
-                  <h3 className="font-bold text-green-800">رد المحامي على طلبك</h3>
-                  <p className="text-sm text-slate-500">{formatDateTime(lawyerResponse.created_at)}</p>
-                </div>
-              </div>
-              
-              <div className="bg-green-50 p-4 rounded-lg mb-4">
-                <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{lawyerResponse.content}</p>
-              </div>
-
-              {/* المرفقات إن وجدت */}
-              {lawyerResponse.attachments && lawyerResponse.attachments.length > 0 && (
-                <div className="mb-4">
-                  <p className="text-sm text-slate-500 mb-2">المرفقات:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {lawyerResponse.attachments.map((file: any, idx: number) => (
-                      <a
-                        key={idx}
-                        href={file.url}
-                        target="_blank"
-                        className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-lg hover:bg-slate-200 text-sm"
-                      >
-                        <Paperclip className="w-4 h-4" />
-                        {file.name}
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* أزرار الإجراء - فقط إذا لم يتم التقييم أو الاعتراض */}
-              {!request.subscriber_rating && request.status !== 'objection_raised' && (
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowRatingForm(true)}
-                    className="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 font-medium flex items-center justify-center gap-2"
-                  >
-                    <Star className="w-5 h-5" />
-                    تقييم الخدمة
-                  </button>
-                  <button
-                    onClick={() => setShowObjectionForm(true)}
-                    className="flex-1 px-4 py-3 bg-orange-100 text-orange-700 rounded-xl hover:bg-orange-200 font-medium flex items-center justify-center gap-2"
-                  >
-                    <ThumbsDown className="w-5 h-5" />
-                    اعتراض
-                  </button>
-                </div>
-              )}
-
-              {/* نموذج التقييم */}
-              {showRatingForm && (
-                <div className="mt-4 p-4 bg-slate-50 rounded-xl">
-                  <h4 className="font-bold text-slate-800 mb-3">تقييم الخدمة</h4>
-                  <div className="flex justify-center gap-2 mb-4">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        onClick={() => setRating(star)}
-                        className="p-1 transition-transform hover:scale-110"
-                      >
-                        <Star className={`w-8 h-8 ${rating >= star ? 'text-yellow-400 fill-yellow-400' : 'text-slate-300'}`} />
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    value={ratingComment}
-                    onChange={(e) => setRatingComment(e.target.value)}
-                    placeholder="أضف تعليقاً (اختياري)..."
-                    className="w-full p-3 border rounded-lg mb-3 resize-none"
-                    rows={3}
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleSubmitRating}
-                      disabled={submittingRating || rating === 0}
-                      className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                    >
-                      {submittingRating ? 'جاري الإرسال...' : 'إرسال التقييم'}
-                    </button>
-                    <button
-                      onClick={() => setShowRatingForm(false)}
-                      className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
-                    >
-                      إلغاء
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* نموذج الاعتراض */}
-              {showObjectionForm && (
-                <div className="mt-4 p-4 bg-orange-50 rounded-xl">
-                  <h4 className="font-bold text-orange-800 mb-3">تقديم اعتراض</h4>
-                  <textarea
-                    value={objectionText}
-                    onChange={(e) => setObjectionText(e.target.value)}
-                    placeholder="اشرح سبب اعتراضك..."
-                    className="w-full p-3 border border-orange-200 rounded-lg mb-3 resize-none"
-                    rows={4}
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleSendObjection}
-                      disabled={sendingObjection || !objectionText.trim()}
-                      className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
-                    >
-                      {sendingObjection ? 'جاري الإرسال...' : 'إرسال الاعتراض'}
-                    </button>
-                    <button
-                      onClick={() => setShowObjectionForm(false)}
-                      className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
-                    >
-                      إلغاء
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ════════════════════════════════════════════════════════════════════
-              🔴 جديد: تعليقات المحامي
-          ════════════════════════════════════════════════════════════════════ */}
-          {lawyerComments.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <MessageCircle className="w-5 h-5 text-blue-500" />
-                تعليقات المحامي
-              </h3>
-              
-              <div className="space-y-4">
-                {lawyerComments.filter(c => !c.parent_id).map((comment) => (
-                  <div key={comment.id} className="border rounded-xl overflow-hidden">
-                    {/* تعليق المحامي */}
-                    <div className="p-4 bg-blue-50">
-                      <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
-                          {lawyer?.full_name?.[0] || '؟'}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-slate-800">المحامي</span>
-                            <span className="text-xs text-slate-500">{formatDateTime(comment.created_at)}</span>
-                          </div>
-                          <p className="text-slate-700">{comment.content}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* ردود المشترك */}
-                    {lawyerComments
-                      .filter(c => c.parent_id === comment.id)
-                      .map((reply) => (
-                        <div key={reply.id} className="p-4 bg-green-50 border-t">
-                          <div className="flex items-start gap-3 mr-8">
-                            <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                              {currentUser?.name?.[0] || '؟'}
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium text-slate-800">أنت</span>
-                                <span className="text-xs text-slate-500">{formatDateTime(reply.created_at)}</span>
-                              </div>
-                              <p className="text-slate-700">{reply.content}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-
-                    {/* زر الرد */}
-                    {canReplyToComment(comment) && (
-                      <div className="p-4 border-t bg-white">
-                        {replyingTo === comment.id ? (
-                          <div className="space-y-3">
-                            <textarea
-                              value={replyText}
-                              onChange={(e) => setReplyText(e.target.value)}
-                              placeholder="اكتب ردك هنا..."
-                              className="w-full p-3 border rounded-lg resize-none"
-                              rows={3}
-                              autoFocus
-                            />
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handleSendReply(comment.id)}
-                                disabled={sendingReply || !replyText.trim()}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-                              >
-                                {sendingReply ? 'جاري الإرسال...' : (
-                                  <>
-                                    <Send className="w-4 h-4" />
-                                    إرسال الرد
-                                  </>
-                                )}
-                              </button>
-                              <button
-                                onClick={() => { setReplyingTo(null); setReplyText('') }}
-                                className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
-                              >
-                                إلغاء
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setReplyingTo(comment.id)}
-                            className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 flex items-center gap-2"
-                          >
-                            <Reply className="w-4 h-4" />
-                            الرد على هذا التعليق
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ════════════════════════════════════════════════════════════════════
-              🔴 جديد: سجل الطلب
-          ════════════════════════════════════════════════════════════════════ */}
+          {/* سجل الطلب */}
           <div className="bg-white rounded-xl shadow-sm p-6">
             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
               <History className="w-5 h-5 text-purple-500" />
@@ -753,11 +765,9 @@ export default function SubscriberRequestDetailsPage() {
             </h3>
             
             <div className="relative">
-              {/* الخط العمودي */}
               <div className="absolute right-4 top-0 bottom-0 w-0.5 bg-slate-200"></div>
               
               <div className="space-y-4">
-                {/* إنشاء الطلب */}
                 <div className="flex gap-4 relative">
                   <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white z-10">
                     <CheckCircle className="w-4 h-4" />
@@ -768,7 +778,30 @@ export default function SubscriberRequestDetailsPage() {
                   </div>
                 </div>
 
-                {/* تعيين المحامي */}
+                {quotes.length > 0 && (
+                  <div className="flex gap-4 relative">
+                    <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-white z-10">
+                      <DollarSign className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 pb-4">
+                      <p className="font-medium text-slate-800">تم استلام {quotes.length} عرض سعر</p>
+                      <p className="text-sm text-slate-500">{formatDateTime(quotes[quotes.length - 1]?.created_at)}</p>
+                    </div>
+                  </div>
+                )}
+
+                {acceptedQuote && (
+                  <div className="flex gap-4 relative">
+                    <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white z-10">
+                      <Award className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 pb-4">
+                      <p className="font-medium text-slate-800">تم قبول العرض {acceptedQuote.quote_number}</p>
+                      <p className="text-sm text-slate-500">{formatDateTime(acceptedQuote.accepted_at || '')}</p>
+                    </div>
+                  </div>
+                )}
+
                 {lawyer && (
                   <div className="flex gap-4 relative">
                     <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white z-10">
@@ -776,28 +809,13 @@ export default function SubscriberRequestDetailsPage() {
                     </div>
                     <div className="flex-1 pb-4">
                       <p className="font-medium text-slate-800">
-                        تم إسناد طلبك للمحامي <span className="text-blue-600 font-bold">{lawyer.lawyer_code || 'LAW-0000'}</span>
+                        تم إسناد طلبك للمحامي <span className="text-blue-600 font-bold">{lawyer.lawyer_code}</span>
                       </p>
                       <p className="text-sm text-slate-500">{formatDateTime(request.assigned_at)}</p>
                     </div>
                   </div>
                 )}
 
-                {/* سجل إضافي من قاعدة البيانات */}
-                {requestHistory.map((item, idx) => (
-                  <div key={idx} className="flex gap-4 relative">
-                    <div className="w-8 h-8 bg-slate-400 rounded-full flex items-center justify-center text-white z-10">
-                      <Clock className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1 pb-4">
-                      <p className="font-medium text-slate-800">{item.action}</p>
-                      <p className="text-sm text-slate-500">{formatDateTime(item.created_at)}</p>
-                      {item.notes && <p className="text-sm text-slate-600 mt-1">{item.notes}</p>}
-                    </div>
-                  </div>
-                ))}
-
-                {/* الحالة الحالية */}
                 <div className="flex gap-4 relative">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white z-10 ${
                     request.status === 'completed' ? 'bg-emerald-500' : 
@@ -831,7 +849,7 @@ export default function SubscriberRequestDetailsPage() {
                 <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-3">
                   {lawyer.full_name?.[0] || '؟'}
                 </div>
-                <p className="text-lg font-bold text-blue-600">{lawyer.lawyer_code || 'LAW-0000'}</p>
+                <p className="text-lg font-bold text-blue-600">{lawyer.lawyer_code}</p>
                 {lawyer.city && <p className="text-sm text-slate-500">{lawyer.city}</p>}
               </div>
               
@@ -860,26 +878,36 @@ export default function SubscriberRequestDetailsPage() {
                 <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
                   <User className="w-8 h-8 text-slate-300" />
                 </div>
-                <p className="text-sm">لم يتم تعيين محامي بعد</p>
+                {pendingQuotes.length > 0 ? (
+                  <p className="text-sm">اختر من العروض المتاحة</p>
+                ) : (
+                  <p className="text-sm">لم يتم تعيين محامي بعد</p>
+                )}
               </div>
             </div>
           )}
 
-          {/* التقييم إذا تم */}
-          {request.subscriber_rating && (
-            <div className="bg-green-50 rounded-xl p-5 border border-green-200">
-              <h3 className="font-bold text-green-800 mb-3">✅ تم تقييم الخدمة</h3>
-              <div className="flex justify-center gap-1 mb-2">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Star
-                    key={star}
-                    className={`w-6 h-6 ${request.subscriber_rating >= star ? 'text-yellow-400 fill-yellow-400' : 'text-slate-300'}`}
-                  />
-                ))}
+          {/* ملخص التكلفة */}
+          {(acceptedQuote || request.total_amount) && (
+            <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-5 border border-green-200">
+              <h3 className="font-bold text-green-800 mb-3 flex items-center gap-2">
+                <CreditCard className="w-5 h-5" />
+                ملخص التكلفة
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-600">السعر الأساسي</span>
+                  <span className="font-medium">{formatPrice(acceptedQuote?.price || request.base_price)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">الضريبة (15%)</span>
+                  <span className="font-medium">{formatPrice(acceptedQuote?.vat_amount || request.vat_amount)}</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-green-200">
+                  <span className="font-bold text-slate-800">الإجمالي</span>
+                  <span className="font-bold text-green-600">{formatPrice(acceptedQuote?.total_amount || request.total_amount)}</span>
+                </div>
               </div>
-              {request.subscriber_feedback && (
-                <p className="text-sm text-green-700 text-center">{request.subscriber_feedback}</p>
-              )}
             </div>
           )}
 
@@ -893,6 +921,166 @@ export default function SubscriberRequestDetailsPage() {
           </div>
         </div>
       </div>
+
+      {/* ════════════════════════════════════════════════════════════════════
+          🆕 Modal تفاصيل العرض
+      ════════════════════════════════════════════════════════════════════ */}
+      {showQuoteModal && selectedQuote && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-l from-slate-800 to-slate-900 text-white p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white text-xl font-bold shadow-lg">
+                    {selectedQuote.lawyer?.full_name?.[0] || '؟'}
+                  </div>
+                  <div>
+                    <p className="font-bold text-lg">{selectedQuote.lawyer?.lawyer_code || 'محامي'}</p>
+                    {selectedQuote.lawyer?.rating_average && (
+                      <div className="flex items-center gap-1 text-sm">
+                        <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                        <span>{selectedQuote.lawyer.rating_average.toFixed(1)}</span>
+                        <span className="text-slate-400">({selectedQuote.lawyer.rating_count || 0} تقييم)</span>
+                      </div>
+                    )}
+                    {selectedQuote.lawyer?.city && (
+                      <p className="text-xs text-slate-300">📍 {selectedQuote.lawyer.city}</p>
+                    )}
+                  </div>
+                </div>
+                
+                <button
+                  onClick={() => setShowQuoteModal(false)}
+                  className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-sm opacity-80">رقم العرض: {selectedQuote.quote_number}</span>
+                <span className={`text-xs px-3 py-1 rounded-full ${getTimeRemaining(selectedQuote.valid_until).bg}`}>
+                  ⏰ {getTimeRemaining(selectedQuote.valid_until).text}
+                </span>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {/* وصف الخدمة */}
+              {selectedQuote.service_description && (
+                <div className="mb-5">
+                  <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-blue-500" />
+                    ما سيقوم به المحامي
+                  </h4>
+                  <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                    <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">{selectedQuote.service_description}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* جدول الدفعات */}
+              {installments[selectedQuote.id]?.length > 1 && (
+                <div className="mb-5">
+                  <h4 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
+                    <CreditCard className="w-5 h-5 text-purple-500" />
+                    جدول الدفعات ({installments[selectedQuote.id].length} دفعات)
+                  </h4>
+                  <div className="bg-purple-50 rounded-xl overflow-hidden border border-purple-100">
+                    <table className="w-full">
+                      <thead className="bg-purple-100">
+                        <tr>
+                          <th className="py-2 px-4 text-right text-xs font-bold text-purple-800">الدفعة</th>
+                          <th className="py-2 px-4 text-right text-xs font-bold text-purple-800">المرحلة</th>
+                          <th className="py-2 px-4 text-center text-xs font-bold text-purple-800">النسبة</th>
+                          <th className="py-2 px-4 text-left text-xs font-bold text-purple-800">المبلغ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {installments[selectedQuote.id].map((inst, idx) => (
+                          <tr key={inst.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-purple-50/50'}>
+                            <td className="py-3 px-4">
+                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-purple-600 text-white text-sm font-bold">
+                                {inst.installment_number}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-sm text-slate-700">{inst.description}</td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="inline-block px-2 py-1 bg-purple-200 text-purple-800 rounded-full text-xs font-bold">
+                                {inst.percentage}%
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-left font-bold text-slate-800">
+                              {inst.amount.toLocaleString()} ر.س
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* ملخص السعر */}
+              <div className="bg-gradient-to-l from-green-50 to-emerald-50 rounded-xl p-5 border border-green-200">
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="text-center p-3 bg-white rounded-lg">
+                    <p className="text-xs text-slate-500 mb-1">السعر الأساسي</p>
+                    <p className="font-bold text-lg text-slate-800">{formatPrice(selectedQuote.price)}</p>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg">
+                    <p className="text-xs text-slate-500 mb-1">الضريبة (15%)</p>
+                    <p className="font-bold text-lg text-slate-700">{formatPrice(selectedQuote.vat_amount)}</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between pt-4 border-t border-green-200">
+                  <div>
+                    <span className="text-slate-600 font-medium">الإجمالي شامل الضريبة</span>
+                    {installments[selectedQuote.id]?.length > 1 && (
+                      <p className="text-xs text-purple-600 mt-1">
+                        💳 الدفعة الأولى عند القبول: {installments[selectedQuote.id][0]?.amount.toLocaleString()} ر.س فقط
+                      </p>
+                    )}
+                  </div>
+                  <span className="text-3xl font-black text-green-600">{formatPrice(selectedQuote.total_amount)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t bg-slate-50 flex gap-3">
+              <button
+                onClick={() => setShowQuoteModal(false)}
+                className="flex-1 py-3 bg-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-300 transition-colors"
+              >
+                إغلاق
+              </button>
+              {isQuoteValid(selectedQuote.valid_until) && (
+                <button
+                  onClick={() => handleAcceptQuote(selectedQuote)}
+                  disabled={acceptingQuote === selectedQuote.id}
+                  className="flex-1 py-3 bg-gradient-to-l from-green-600 to-emerald-600 text-white rounded-xl font-bold hover:from-green-700 hover:to-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {acceptingQuote === selectedQuote.id ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      جاري القبول...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-5 h-5" />
+                      قبول هذا العرض
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
