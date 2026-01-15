@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Clock, CheckCircle, Send, RefreshCw } from 'lucide-react'
-
+import QuoteFormModal, { QuoteFormData } from '@/components/QuoteFormModal'
 const menuItems = [
   { id: 'dashboard', label: 'لوحة التحكم', icon: '🏠', href: '/independent' },
   { id: 'my-tasks', label: 'مهامي', icon: '📋', href: '/independent/my-tasks' },
@@ -34,19 +34,26 @@ interface AvailableRequest {
 
 export default function IndependentLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
   const isDashboard = pathname === '/independent'
   
   const [lawyerName, setLawyerName] = useState('المحامي')
   const [availableRequests, setAvailableRequests] = useState<AvailableRequest[]>([])
   const [loadingRequests, setLoadingRequests] = useState(false)
+  const [lawyerId, setLawyerId] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
   const [notificationCount] = useState(5)
+  const [showQuoteModal, setShowQuoteModal] = useState(false)
+  const [selectedRequest, setSelectedRequest] = useState<any>(null)
 
   useEffect(() => {
     const name = localStorage.getItem('exolex_lawyer_name')
+    const id = localStorage.getItem('exolex_lawyer_id')
     if (name) setLawyerName(name)
-    fetchAvailableRequests()
-    
-    const channel = supabase
+      if (id) setLawyerId(id)
+        fetchAvailableRequests()
+        
+        const channel = supabase
       .channel('independent-requests')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'service_requests' }, () => {
         fetchAvailableRequests()
@@ -55,7 +62,64 @@ export default function IndependentLayout({ children }: { children: React.ReactN
     
     return () => { supabase.removeChannel(channel) }
   }, [])
-
+  const handleAcceptRequest = async (requestId: string) => {
+    if (!lawyerId) { alert('الرجاء تسجيل الدخول أولاً'); return }
+    if (!confirm('هل أنت متأكد من قبول هذا الطلب؟')) return
+    
+    try {
+      setSubmitting(true)
+      const { error } = await supabase
+        .from('service_requests')
+        .update({
+          is_accepted: true,
+          assigned_lawyer_id: lawyerId,
+          status: 'in_progress',
+          accepted_at: new Date().toISOString()
+        })
+        .eq('id', requestId)
+      
+      if (error) { alert('حدث خطأ: ' + error.message); return }
+      setAvailableRequests(prev => prev.filter(r => r.id !== requestId))
+      alert('تم قبول الطلب بنجاح!')
+      fetchAvailableRequests()
+    } catch (err: any) {
+      alert('حدث خطأ: ' + err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  const handleSubmitQuote = async (data: QuoteFormData) => {
+    if (!lawyerId || !selectedRequest) return
+    
+    try {
+      setSubmitting(true)
+      const { error } = await supabase.from('service_quotes').insert({
+        request_id: selectedRequest.id,
+        lawyer_id: lawyerId,
+        service_description: data.service_description,
+        price: data.total_price,
+        vat_percent: 15,
+        vat_amount: data.vat_amount,
+        total_amount: data.total_with_vat,
+        platform_fee_percent: 30,
+        platform_fee_amount: data.platform_commission,
+        lawyer_earnings: data.lawyer_amount,
+        installments_count: data.installments?.length || 1,
+        status: 'pending',
+        valid_until: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+      })
+      
+      if (error) throw error
+      alert('تم تقديم العرض بنجاح!')
+      setShowQuoteModal(false)
+      setSelectedRequest(null)
+      fetchAvailableRequests()
+    } catch (err: any) {
+      alert('حدث خطأ: ' + err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
   const fetchAvailableRequests = async () => {
     setLoadingRequests(true)
     const { data } = await supabase
@@ -79,6 +143,7 @@ export default function IndependentLayout({ children }: { children: React.ReactN
   }
 
   return (
+    
     <div className="flex h-screen" dir="rtl">
       
       {/* القائمة الرئيسية */}
@@ -184,12 +249,19 @@ export default function IndependentLayout({ children }: { children: React.ReactN
                     )}
                   </div>
                   <div className="flex gap-2 mt-3">
-                    {req.base_price ? (
-                      <button className="flex-1 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-semibold flex items-center justify-center gap-1">
+                  {req.base_price ? (
+                      <button 
+                      onClick={() => handleAcceptRequest(req.id)}
+                        className="flex-1 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-semibold flex items-center justify-center gap-1"
+                      >
                         <CheckCircle className="w-3 h-3" />قبول
                       </button>
                     ) : (
-                      <button className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-semibold flex items-center justify-center gap-1">
+                      <button 
+onClick={() => { setSelectedRequest(req); setShowQuoteModal(true) }}
+
+                        className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-semibold flex items-center justify-center gap-1"
+                      >
                         <Send className="w-3 h-3" />تقديم عرض
                       </button>
                     )}
@@ -202,8 +274,16 @@ export default function IndependentLayout({ children }: { children: React.ReactN
           <div className="p-4 border-t border-gray-200 sticky bottom-0 bg-white">
             <p className="text-center text-xs text-gray-400">اضغط على أي طلب لعرض التفاصيل</p>
           </div>
-        </aside>
+          </aside>
       )}
+
+      <QuoteFormModal 
+        isOpen={showQuoteModal} 
+        onClose={() => { setShowQuoteModal(false); setSelectedRequest(null) }} 
+        onSubmit={handleSubmitQuote} 
+        request={selectedRequest} 
+        submitting={submitting} 
+      />
     </div>
   )
 }

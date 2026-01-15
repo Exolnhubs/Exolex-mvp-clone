@@ -8,7 +8,7 @@ import {
   FileText, Bell, Gavel, FileCheck
 } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import QuoteFormModal, { QuoteFormData } from '@/components/QuoteFormModal'
 
 interface Stats {
@@ -67,6 +67,7 @@ interface Activity {
 
 export default function IndependentDashboard() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [lawyerId, setLawyerId] = useState<string | null>(null)
   const [lawyerName, setLawyerName] = useState('المحامي')
   const [loading, setLoading] = useState(true)
@@ -97,7 +98,29 @@ export default function IndependentDashboard() {
     if (name) setLawyerName(name)
     fetchData(id)
   }, [])
-
+// معالجة الطلبات من الشريط الجانبي
+useEffect(() => {
+  const requestId = searchParams.get('request')
+  const action = searchParams.get('action')
+  
+  if (requestId && action) {
+    // انتظر تحميل البيانات
+    setTimeout(() => {
+      const request = availableRequests.find(r => r.id === requestId)
+      if (request) {
+        if (action === 'accept') {
+          handleAcceptRequest(request)
+        } else if (action === 'quote') {
+          setSelectedRequest(request)
+          setShowQuoteModal(true)
+        }
+      }
+    }, 1000)
+    
+    // مسح الـ URL params
+    router.replace('/independent')
+  }
+}, [searchParams, availableRequests])
   const fetchData = async (id: string | null) => {
     try {
       setLoading(true)

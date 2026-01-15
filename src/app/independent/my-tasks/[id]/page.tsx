@@ -33,8 +33,8 @@ interface Request {
   assigned_lawyer_id: string
   member_id: string
   category?: { name_ar: string; icon: string }
-  subcategory?: { name_ar: string }
-  nolex_guidance?: string
+  subcategory?: { name_ar: string; service_path?: { code: string; name_ar: string } }
+ nolex_guidance?: string
   attachments?: any[]
 }
 
@@ -103,6 +103,15 @@ interface FileItem {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Config Objects
 // ═══════════════════════════════════════════════════════════════════════════════
+// المسارات التي تحتاج وكالة
+const PATHS_REQUIRING_POA = ['litigation', 'execution', 'appeal', 'settlement', 'arbitration']
+
+// المسارات التي تحتاج فتح قضية
+const PATHS_REQUIRING_CASE = ['litigation', 'appeal']
+
+// دوال مساعدة
+const requiresPoa = (pathCode?: string) => pathCode ? PATHS_REQUIRING_POA.includes(pathCode) : false
+const requiresCase = (pathCode?: string) => pathCode ? PATHS_REQUIRING_CASE.includes(pathCode) : false
 const statusConfig: Record<string, { label: string; color: string; bgColor: string }> = {
   pending_assignment: { label: 'بانتظار الإسناد', color: 'text-gray-700', bgColor: 'bg-gray-100' },
   assigned: { label: 'تم الإسناد', color: 'text-blue-700', bgColor: 'bg-blue-100' },
@@ -171,6 +180,9 @@ export default function RequestProcessingPage() {
   const [files, setFiles] = useState<FileItem[]>([])
   const [timeLogs, setTimeLogs] = useState<TimeLog[]>([])
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([])
+  const [objection, setObjection] = useState<any>(null)
+  const [objectionResponse, setObjectionResponse] = useState('')
+  const [submittingObjectionResponse, setSubmittingObjectionResponse] = useState(false)
 
   // UI states
   const [activeTab, setActiveTab] = useState<'request' | 'conversations' | 'files' | 'appointments' | 'timeline'>('request')
@@ -197,7 +209,18 @@ export default function RequestProcessingPage() {
     uploaded_at: string
     status: string
   } | null>(null)
-
+  const [poaRejectionReason, setPoaRejectionReason] = useState('')
+const [showPoaRejectForm, setShowPoaRejectForm] = useState(false)
+const [processingPoa, setProcessingPoa] = useState(false)
+  const [poaRequestForm, setPoaRequestForm] = useState({
+    principal_name: '',
+    principal_national_id: '',
+    principal_date_of_birth: '',
+    principal_phone: '',
+    poa_template: ''
+  })
+  const [submittingPoa, setSubmittingPoa] = useState(false)
+  const [poaRequest, setPoaRequest] = useState<any>(null)
   // NOLEX state
   const [nolexMessages, setNolexMessages] = useState<{role: string; content: string}[]>([])
   const [nolexInput, setNolexInput] = useState('')
@@ -281,7 +304,8 @@ export default function RequestProcessingPage() {
         loadFiles(),
         loadTimeLogs(),
         loadActivityLogs(),
-        loadPoa()
+        loadPoa(),
+        loadObjection()
       ])
 
       // Log view activity
@@ -363,20 +387,149 @@ export default function RequestProcessingPage() {
   const loadPoa = async () => {
     try {
       const { data } = await supabase
-        .from('request_poa')
+        .from('power_of_attorneys')
         .select('*')
         .eq('request_id', requestId)
         .single()
-      setPoaDocument(data || null)
+      
+      if (data) {
+        setPoaDocument({
+          id: data.id,
+          file_name: data.poa_number ? `وكالة رقم ${data.poa_number}` : 'وكالة',
+          file_url: data.poa_document,
+          uploaded_at: data.submitted_at || data.created_at,
+          status: data.status
+        })
+      } else {
+        setPoaDocument(null)
+      }
     } catch (error) {
-      // No POA found - that's okay
       setPoaDocument(null)
     }
   }
+// Load Objection (الاعتراض)
+const loadObjection = async () => {
+  try {
+    const { data } = await supabase
+      .from('request_objections')
+      .select('*')
+      .eq('request_id', requestId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    setObjection(data || null)
+  } catch (error) {
+    setObjection(null)
+  }
+}
+// الرد على الاعتراض
+const handleRespondToObjection = async () => {
+  if (!objectionResponse.trim()) {
+    toast.error('يرجى كتابة الرد على الاعتراض')
+    return
+  }
+  
+  setSubmittingObjectionResponse(true)
+  try {
+    // تحديث الاعتراض بالرد
+    await supabase
+      .from('request_objections')
+      .update({
+        lawyer_response: objectionResponse,
+        lawyer_responded_at: new Date().toISOString(),
+        status: 'responded'
+      })
+      .eq('id', objection.id)
 
+    // تحديث حالة الطلب
+    await supabase
+      .from('service_requests')
+      .update({ status: 'objection_responded' })
+      .eq('id', requestId)
+
+    // إرسال إشعار للمشترك
+    await supabase.from('notifications').insert({
+      recipient_type: 'member',
+      recipient_id: request?.member_id,
+      title: '💬 رد المحامي على اعتراضك',
+      body: `المحامي رد على اعتراضك في الطلب ${request?.ticket_number}`,
+      notification_type: 'request_update',
+      request_id: requestId,
+      is_read: false
+    })
+
+    toast.success('✅ تم إرسال الرد بنجاح')
+    setObjectionResponse('')
+    loadObjection()
+    loadAllData()
+  } catch (error) {
+    console.error('Error:', error)
+    toast.error('حدث خطأ في إرسال الرد')
+  } finally {
+    setSubmittingObjectionResponse(false)
+  }
+}
   // ═══════════════════════════════════════════════════════════════════════════════
   // Actions
   // ═══════════════════════════════════════════════════════════════════════════════
+  // إرسال طلب وكالة
+  const handleSubmitPoaRequest = async () => {
+    if (!poaRequestForm.principal_name || !poaRequestForm.principal_national_id || !poaRequestForm.poa_template) {
+      toast.error('يرجى ملء جميع الحقول المطلوبة')
+      return
+    }
+
+    try {
+      setSubmittingPoa(true)
+      
+      // حفظ طلب الوكالة
+      const { data, error } = await supabase
+        .from('power_of_attorneys')
+        .insert({
+          request_id: requestId,
+          principal_name: poaRequestForm.principal_name,
+          principal_national_id: poaRequestForm.principal_national_id,
+          principal_date_of_birth: poaRequestForm.principal_date_of_birth,
+          principal_phone: poaRequestForm.principal_phone,
+          poa_template: poaRequestForm.poa_template,
+          status: 'pending'
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // تحديث حالة الطلب
+      await supabase
+        .from('service_requests')
+        .update({ status: 'pending_poa' })
+        .eq('id', requestId)
+
+      // إرسال إشعار للمشترك
+      await supabase.from('notifications').insert({
+        recipient_type: 'member',
+        recipient_id: request?.member_id,
+        title: '📄 طلب إصدار وكالة',
+        body: `المحامي يطلب منك إصدار وكالة للطلب ${request?.ticket_number}`,
+        notification_type: 'poa_request',
+        request_id: requestId,
+        is_read: false
+      })
+
+      setPoaRequest(data)
+      toast.success('✅ تم إرسال طلب الوكالة للمشترك')
+      setShowPoaModal(false)
+      
+      // تحديث الطلب
+      setRequest(prev => prev ? { ...prev, status: 'pending_poa' } : null)
+      
+    } catch (err: any) {
+      console.error('Error:', err)
+      toast.error('حدث خطأ: ' + err.message)
+    } finally {
+      setSubmittingPoa(false)
+    }
+  }
   const logActivity = async (activityType: string, description: string, metadata: any = {}) => {
     try {
       await supabase.from('activity_logs').insert({
@@ -391,14 +544,100 @@ export default function RequestProcessingPage() {
       console.error('Log error:', error)
     }
   }
+// قبول الوكالة
+const handleApprovePoa = async () => {
+  if (!poaDocument || !request) return
+  
+  try {
+    setProcessingPoa(true)
+    
+    await supabase
+      .from('power_of_attorneys')
+      .update({ 
+        status: 'approved',
+        approved_at: new Date().toISOString()
+      })
+      .eq('request_id', requestId)
+    
+    await supabase
+      .from('service_requests')
+      .update({ status: 'poa_approved' })
+      .eq('id', requestId)
+    
+    await supabase.from('notifications').insert({
+      recipient_type: 'member',
+      recipient_id: request.member_id,
+      title: '✅ تم قبول الوكالة',
+      body: `تم قبول الوكالة للطلب ${request.ticket_number}`,
+      notification_type: 'poa_approved',
+      request_id: requestId,
+      is_read: false
+    })
+    
+    toast.success('✅ تم قبول الوكالة')
+    setPoaDocument({ ...poaDocument, status: 'approved' })
+    setRequest((prev: any) => ({ ...prev, status: 'poa_approved' }))
+    setShowPoaModal(false)
+  } catch (err: any) {
+    toast.error('حدث خطأ: ' + err.message)
+  } finally {
+    setProcessingPoa(false)
+  }
+}
 
+// رفض الوكالة
+const handleRejectPoa = async () => {
+  if (!poaDocument || !request || !poaRejectionReason.trim()) {
+    toast.error('يرجى كتابة سبب الرفض')
+    return
+  }
+  
+  try {
+    setProcessingPoa(true)
+    
+    await supabase
+      .from('power_of_attorneys')
+      .update({ 
+        status: 'rejected',
+        rejection_reason: poaRejectionReason,
+        reviewed_at: new Date().toISOString()
+      })
+      .eq('request_id', requestId)
+    
+    await supabase
+      .from('service_requests')
+      .update({ status: 'pending_poa' })
+      .eq('id', requestId)
+    
+    await supabase.from('notifications').insert({
+      recipient_type: 'member',
+      recipient_id: request.member_id,
+      title: '❌ تم رفض الوكالة',
+      body: `تم رفض الوكالة للطلب ${request.ticket_number}. السبب: ${poaRejectionReason}`,
+      notification_type: 'poa_rejected',
+      request_id: requestId,
+      is_read: false
+    })
+    
+    toast.success('تم رفض الوكالة')
+    setPoaDocument(null)
+    setRequest((prev: any) => ({ ...prev, status: 'pending_poa' }))
+    setPoaRejectionReason('')
+    setShowPoaRejectForm(false)
+    setShowPoaModal(false)
+  } catch (err: any) {
+    toast.error('حدث خطأ: ' + err.message)
+  } finally {
+    setProcessingPoa(false)
+  }
+}
   // Start work on request
   const handleStartWork = async () => {
     try {
       await supabase
         .from('service_requests')
         .update({ 
-          status: 'in_progress',
+          status: 'objection_responded',
           work_started_at: new Date().toISOString()
         })
         .eq('id', requestId)
@@ -1012,7 +1251,7 @@ export default function RequestProcessingPage() {
         className="hidden"
       />
 
-      {/* ═══════════════════════════════════════════════════════════════════════════════
+{/* ═══════════════════════════════════════════════════════════════════════════════
           Main Content Area
       ═══════════════════════════════════════════════════════════════════════════════ */}
       <main className="p-6">
@@ -1029,6 +1268,67 @@ export default function RequestProcessingPage() {
                     <h3 className="text-lg font-bold text-blue-800">توجيه NOLEX</h3>
                   </div>
                   <p className="text-blue-700 leading-relaxed">{request.nolex_guidance}</p>
+                </div>
+              )}
+
+              {/* ⚠️ قسم الاعتراض */}
+              {objection && (
+                <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-300 rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="text-2xl">⚠️</span>
+                    <h3 className="text-lg font-bold text-red-800">اعتراض من المشترك</h3>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      objection.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                      objection.status === 'responded' ? 'bg-blue-100 text-blue-800' :
+                      'bg-green-100 text-green-800'
+                    }`}>
+                      {objection.status === 'pending' ? 'بانتظار الرد' :
+                       objection.status === 'responded' ? 'تم الرد' : objection.status}
+                    </span>
+                  </div>
+                  
+                  <div className="bg-white rounded-lg p-4 mb-4">
+                    <p className="text-sm text-gray-500 mb-1">سبب الاعتراض:</p>
+                    <p className="text-gray-800 font-medium">{objection.content}</p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      {new Date(objection.created_at).toLocaleDateString('ar-SA')} - {new Date(objection.created_at).toLocaleTimeString('ar-SA')}
+                    </p>
+                  </div>
+
+                  {objection.lawyer_response && (
+                    <div className="bg-blue-50 rounded-lg p-4 mb-4 border-r-4 border-blue-500">
+                      <p className="text-sm text-blue-600 mb-1">ردك السابق:</p>
+                      <p className="text-gray-800">{objection.lawyer_response}</p>
+                    </div>
+                  )}
+
+                  {objection.status === 'pending' && (
+                    <div className="space-y-3">
+                      <textarea
+                        value={objectionResponse}
+                        onChange={(e) => setObjectionResponse(e.target.value)}
+                        placeholder="اكتب ردك على الاعتراض..."
+                        className="w-full h-24 p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                      <button
+                        onClick={handleRespondToObjection}
+                        disabled={submittingObjectionResponse || !objectionResponse.trim()}
+                        className="w-full py-3 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-lg font-bold hover:from-red-600 hover:to-orange-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {submittingObjectionResponse ? (
+                          <>
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            جاري الإرسال...
+                          </>
+                        ) : (
+                          <>
+                            <span>💬</span>
+                            إرسال الرد
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1911,22 +2211,25 @@ export default function RequestProcessingPage() {
       {/* POA Modal */}
       {showPoaModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg p-6">
+          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-gray-800">📄 الوكالة الشرعية</h3>
+              <h3 className="text-xl font-bold text-gray-800">📄 طلب إصدار وكالة</h3>
               <button onClick={() => setShowPoaModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
 
             {poaDocument ? (
+              /* الوكالة موجودة */
               <div className="space-y-4">
-                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                <div className={`${poaDocument.status === 'approved' ? 'bg-green-50 border-green-200' : poaDocument.status === 'submitted' ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'} border rounded-xl p-4`}>
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                      <span className="text-2xl">✅</span>
+                    <div className={`w-12 h-12 ${poaDocument.status === 'approved' ? 'bg-green-100' : 'bg-blue-100'} rounded-lg flex items-center justify-center`}>
+                      <span className="text-2xl">{poaDocument.status === 'approved' ? '✅' : '📄'}</span>
                     </div>
                     <div>
-                      <p className="font-semibold text-green-800">تم رفع الوكالة</p>
-                      <p className="text-sm text-green-600">
+                      <p className={`font-semibold ${poaDocument.status === 'approved' ? 'text-green-800' : 'text-blue-800'}`}>
+                        {poaDocument.status === 'approved' ? 'الوكالة مقبولة' : 'الوكالة مرفوعة - بانتظار المراجعة'}
+                      </p>
+                      <p className="text-sm text-gray-600">
                         {new Date(poaDocument.uploaded_at).toLocaleDateString('ar-SA')}
                       </p>
                     </div>
@@ -1936,50 +2239,192 @@ export default function RequestProcessingPage() {
                     href={poaDocument.file_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
                   >
                     <span>📥</span> عرض/تحميل الوكالة
                   </a>
                 </div>
+
+                {/* أزرار القبول والرفض - تظهر فقط إذا الوكالة بانتظار المراجعة */}
+                {poaDocument.status === 'submitted' && !showPoaRejectForm && (
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={handleApprovePoa}
+                      disabled={processingPoa}
+                      className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      <span>✅</span> قبول الوكالة
+                    </button>
+                    <button 
+                      onClick={() => setShowPoaRejectForm(true)}
+                      disabled={processingPoa}
+                      className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      <span>❌</span> رفض الوكالة
+                    </button>
+                  </div>
+                )}
+
+                {/* نموذج سبب الرفض */}
+                {showPoaRejectForm && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-3">
+                    <label className="block text-sm font-semibold text-red-800">سبب رفض الوكالة *</label>
+                    <textarea
+                      value={poaRejectionReason}
+                      onChange={(e) => setPoaRejectionReason(e.target.value)}
+                      className="w-full px-4 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                      rows={3}
+                      placeholder="اكتب سبب الرفض..."
+                    />
+                    <div className="flex gap-3">
+                      <button 
+                        onClick={() => { setShowPoaRejectForm(false); setPoaRejectionReason('') }}
+                        className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
+                      >
+                        إلغاء
+                      </button>
+                      <button 
+                        onClick={handleRejectPoa}
+                        disabled={processingPoa || !poaRejectionReason.trim()}
+                        className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold disabled:opacity-50"
+                      >
+                        {processingPoa ? 'جاري الإرسال...' : 'تأكيد الرفض'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* زر فتح قضية - يظهر فقط بعد قبول الوكالة */}
+                {poaDocument.status === 'approved' && (
+                  <button 
+                  onClick={() => { setShowPoaModal(false); router.push(`/independent/cases/new?request_id=${requestId}`) }}                    className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold flex items-center justify-center gap-2"
+                  >
+                    <span>⚖️</span> فتح قضية جديدة
+                  </button>
+                )}
+
+                <button 
+                  onClick={() => setShowPoaModal(false)}
+                  className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
+                >
+                  إغلاق
+                </button>
+              </div>
+            ) : poaRequest ? (
+              /* طلب الوكالة مرسل - بانتظار المشترك */
+              <div className="space-y-4">
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
+                      <span className="text-2xl">⏳</span>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-amber-800">بانتظار المشترك</p>
+                      <p className="text-sm text-amber-600">تم إرسال طلب الوكالة</p>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 space-y-2 text-sm">
+                    <p><span className="text-gray-500">اسم الموكل:</span> {poaRequest.principal_name}</p>
+                    <p><span className="text-gray-500">رقم الهوية:</span> {poaRequest.principal_national_id}</p>
+                    <p><span className="text-gray-500">صيغة الوكالة:</span></p>
+                    <p className="bg-gray-50 p-2 rounded text-gray-700">{poaRequest.poa_template}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowPoaModal(false)}
+                  className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
+                >
+                  إغلاق
+                </button>
               </div>
             ) : (
-              <div className="text-center py-8">
-                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">📄</span>
-                </div>
-                <h4 className="text-lg font-semibold text-gray-700 mb-2">لم يتم رفع وكالة بعد</h4>
-                <p className="text-gray-500 text-sm mb-4">
-                  العميل لم يقم برفع الوكالة الشرعية لهذا الطلب
-                </p>
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <p className="text-sm text-amber-700">
-                    💡 يمكنك إرسال رسالة للعميل لطلب رفع الوكالة
+              /* نموذج طلب الوكالة */
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-blue-700">
+                    📝 أدخل بيانات الموكل (المشترك) والصيغة المطلوبة للوكالة
                   </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">اسم الموكل *</label>
+                    <input
+                      type="text"
+                      value={poaRequestForm.principal_name}
+                      onChange={(e) => setPoaRequestForm({...poaRequestForm, principal_name: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                      placeholder="الاسم الرباعي"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">رقم الهوية الوطنية *</label>
+                    <input
+                      type="text"
+                      value={poaRequestForm.principal_national_id}
+                      onChange={(e) => setPoaRequestForm({...poaRequestForm, principal_national_id: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                      placeholder="10 أرقام"
+                      maxLength={10}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">تاريخ الميلاد</label>
+                    <input
+                      type="date"
+                      value={poaRequestForm.principal_date_of_birth}
+                      onChange={(e) => setPoaRequestForm({...poaRequestForm, principal_date_of_birth: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">رقم الجوال</label>
+                    <input
+                      type="tel"
+                      value={poaRequestForm.principal_phone}
+                      onChange={(e) => setPoaRequestForm({...poaRequestForm, principal_phone: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                      placeholder="05xxxxxxxx"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">صيغة الوكالة المطلوبة *</label>
+                  <textarea
+                    value={poaRequestForm.poa_template}
+                    onChange={(e) => setPoaRequestForm({...poaRequestForm, poa_template: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                    rows={4}
+                    placeholder="حدد نوع التوكيل والصلاحيات المطلوبة..."
+                  />
+                </div>
+
+                {/* رسالة تحذيرية */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-sm text-amber-800 font-semibold mb-1">⚠️ تنبيه مهم</p>
+                  <p className="text-sm text-amber-700">
+                    عند إصدار وكالة نأمل التأكد من الصيغة المطلوبة، كما أن هناك مفردات تمكن وتمنح المحامي الصلاحية المطلقة يجب التأكد عند إصدارها مثل (حق التوكيل للغير، الإقرار، الهبة، الإثبات، القبول، الخ)
+                  </p>
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <button 
+                    onClick={() => setShowPoaModal(false)}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
+                  >
+                    إلغاء
+                  </button>
+                  <button 
+                    onClick={handleSubmitPoaRequest}
+                    disabled={submittingPoa}
+                    className="flex-1 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-semibold disabled:opacity-50"
+                  >
+                    {submittingPoa ? 'جاري الإرسال...' : '📤 إرسال طلب الوكالة'}
+                  </button>
                 </div>
               </div>
             )}
-
-            <div className="flex gap-3 mt-6">
-              <button 
-                onClick={() => setShowPoaModal(false)}
-                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
-              >
-                إغلاق
-              </button>
-              {!poaDocument && (
-                <button 
-                  onClick={() => {
-                    setShowPoaModal(false)
-                    setActiveTab('conversations')
-                    setActiveChatTab('client')
-                    setNewClientMessage('مرحباً، نحتاج منك رفع صورة من الوكالة الشرعية لنتمكن من متابعة طلبك.')
-                  }}
-                  className="flex-1 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-semibold"
-                >
-                  طلب الوكالة من العميل
-                </button>
-              )}
-            </div>
           </div>
         </div>
       )}

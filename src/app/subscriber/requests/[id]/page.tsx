@@ -1,9 +1,9 @@
 'use client'
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 📋 تفاصيل الطلب - المشترك (مع جدول العروض + Modal)
+// 📋 تفاصيل الطلب - المشترك (مع الرد النهائي والملفات)
 // 📅 تاريخ التحديث: 14 يناير 2026
-// 🎯 التحديثات: جدول مختصر للعروض + Modal للتفاصيل + إصلاح خطأ القبول
+// 🎯 التحديثات: عرض الرد النهائي + الملفات + الاعتراض + تأكيد الاطلاع
 // 📁 المسار: src/app/subscriber/requests/[id]/page.tsx
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -15,7 +15,7 @@ import {
   ArrowRight, Clock, User, FileText, Calendar,
   Bot, AlertCircle, CheckCircle, XCircle,
   Timer, Star, ChevronDown, ChevronUp,
-  History, DollarSign, CreditCard, Award, Eye, X
+  History, DollarSign, CreditCard, Award, Eye, X, Download
 } from 'lucide-react'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -62,9 +62,59 @@ interface QuoteInstallment {
   created_at: string
 }
 
+interface LawyerResponse {
+  id: string
+  request_id: string
+  lawyer_id: string
+  response_content: string
+  recommendations: string | null
+  attachments: any
+  status: string
+  sent_at: string | null
+  created_at: string
+}
+
+interface RequestFile {
+  id: string
+  request_id: string
+  uploaded_by: string
+  uploaded_by_type: string
+  uploaded_by_name: string
+  file_name: string
+  file_url: string
+  file_type: string
+  file_size: number
+  mime_type: string
+  category: string
+  description: string | null
+  is_shared_with_client: boolean
+  created_at: string
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // التكوينات
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// مكون صف التقييم بالنجوم
+const RatingRow = ({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) => (
+  <div className="flex items-center justify-between">
+    <span className="text-sm text-slate-700">{label}</span>
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          onClick={() => onChange(star)}
+          className="p-1 hover:scale-110 transition-transform"
+        >
+          <Star 
+            className={`w-6 h-6 ${star <= value ? 'text-yellow-400 fill-yellow-400' : 'text-slate-300'}`} 
+          />
+        </button>
+      ))}
+    </div>
+  </div>
+)
 
 const statusConfig: Record<string, { label: string; color: string; icon: any; description: string }> = {
   pending: { 
@@ -121,6 +171,24 @@ const statusConfig: Record<string, { label: string; color: string; icon: any; de
     icon: XCircle,
     description: 'تم إلغاء الطلب'
   },
+  pending_poa: { 
+    label: 'بانتظار الوكالة', 
+    color: 'bg-amber-100 text-amber-700', 
+    icon: FileText, 
+    description: 'المحامي يطلب منك إصدار وكالة' 
+  },
+  poa_submitted: { 
+    label: 'الوكالة مرفوعة', 
+    color: 'bg-blue-100 text-blue-700', 
+    icon: Clock, 
+    description: 'بانتظار مراجعة المحامي' 
+  },
+  poa_approved: { 
+    label: 'الوكالة مقبولة', 
+    color: 'bg-green-100 text-green-700', 
+    icon: CheckCircle, 
+    description: 'تم قبول الوكالة' 
+  },
 }
 
 const typeConfig: Record<string, { label: string; color: string; icon: string }> = {
@@ -155,16 +223,53 @@ export default function SubscriberRequestDetailsPage() {
   const [installments, setInstallments] = useState<{[quoteId: string]: QuoteInstallment[]}>({})
   const [acceptingQuote, setAcceptingQuote] = useState<string | null>(null)
   
-  // 🆕 Modal تفاصيل العرض
+  // Modal تفاصيل العرض
   const [selectedQuote, setSelectedQuote] = useState<ServiceQuote | null>(null)
   const [showQuoteModal, setShowQuoteModal] = useState(false)
-
+  const [poaFile, setPoaFile] = useState<File | null>(null)
+  const [poaNumber, setPoaNumber] = useState('')
+  const [poaDate, setPoaDate] = useState('')
+  const [uploadingPoa, setUploadingPoa] = useState(false)
   // محادثة NOLEX
   const [nolexConversation, setNolexConversation] = useState<any[]>([])
   const [showNolexArchive, setShowNolexArchive] = useState(false)
 
   // سجل الطلب
   const [requestHistory, setRequestHistory] = useState<any[]>([])
+
+  // 🆕 الرد النهائي والملفات
+  const [lawyerResponse, setLawyerResponse] = useState<LawyerResponse | null>(null)
+  const [requestFiles, setRequestFiles] = useState<RequestFile[]>([])
+  const [showObjectionModal, setShowObjectionModal] = useState(false)
+  const [objectionContent, setObjectionContent] = useState('')
+  const [submittingObjection, setSubmittingObjection] = useState(false)
+  const [hasAcknowledged, setHasAcknowledged] = useState(false)
+  const [currentObjection, setCurrentObjection] = useState<any>(null)
+
+  // 🆕 التقييم
+  const [showRatingModal, setShowRatingModal] = useState(false)
+  const [submittingRating, setSubmittingRating] = useState(false)
+  const [ratingForm, setRatingForm] = useState({
+    // تقييم المحامي
+    lawyer_acceptance_speed: 5,
+    lawyer_responsiveness: 5,
+    lawyer_understanding: 5,
+    lawyer_price_value: 5,
+    lawyer_updates: 5,
+    lawyer_comment: '',
+    // تقييم الخدمة
+    service_quality: 5,
+    service_satisfaction: 5,
+    service_library_experience: 5,
+    service_nolex_response: 5,
+    service_comment: '',
+    // تقييم التطبيق
+    app_ease_of_use: 5,
+    app_services_clarity: 5,
+    app_overall_experience: 5,
+    app_navigation_difficulty: false,
+    app_comment: ''
+  })
 
   // ═══════════════════════════════════════════════════════════════════════════════
   // تحميل البيانات
@@ -244,10 +349,7 @@ export default function SubscriberRequestDetailsPage() {
         .eq('request_id', requestId)
         .order('created_at', { ascending: false })
 
-      console.log('📋 العروض:', quotesData, 'Error:', quotesError)
-
       if (quotesData && quotesData.length > 0) {
-        // جلب بيانات المحامين بشكل منفصل
         const lawyerIds = Array.from(new Set(quotesData.map(q => q.lawyer_id).filter(Boolean)))
         
         let quotesWithLawyers = quotesData
@@ -265,7 +367,6 @@ export default function SubscriberRequestDetailsPage() {
         }
         
         setQuotes(quotesWithLawyers)
-        console.log('📋 العروض مع المحامين:', quotesWithLawyers)
 
         // جلب الدفعات لكل عرض
         const quoteIds = quotesData.map(q => q.id)
@@ -285,7 +386,6 @@ export default function SubscriberRequestDetailsPage() {
             groupedInstallments[inst.quote_id].push(inst)
           })
           setInstallments(groupedInstallments)
-          console.log('📊 الدفعات:', groupedInstallments)
         }
       }
 
@@ -297,6 +397,53 @@ export default function SubscriberRequestDetailsPage() {
         .order('created_at', { ascending: false })
       setRequestHistory(historyData || [])
 
+      // ═══════════════════════════════════════════════════════════════════════════════
+      // 🆕 جلب الرد النهائي من المحامي (للطلبات المكتملة)
+      // ═══════════════════════════════════════════════════════════════════════════════
+      if (requestData.status === 'completed' || requestData.status === 'closed' || requestData.status === 'objection_raised' || requestData.status === 'objection_responded') {
+        const { data: responseData } = await supabase
+          .from('lawyer_responses')
+          .select('*')
+          .eq('request_id', requestId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        
+        if (responseData) {
+          setLawyerResponse(responseData)
+          console.log('📋 الرد النهائي:', responseData)
+        }
+
+        // جلب الملفات المرفقة
+        const { data: filesData } = await supabase
+          .from('request_files')
+          .select('*')
+          .eq('request_id', requestId)
+          .eq('is_shared_with_client', true)
+          .order('created_at', { ascending: false })
+        
+        if (filesData) {
+          setRequestFiles(filesData)
+          console.log('📁 الملفات:', filesData)
+        }
+
+        // التحقق من حالة الاطلاع
+        const { data: objectionData } = await supabase
+          .from('request_objections')
+          .select('*')
+          .eq('request_id', requestId)
+          .eq('member_id', memberData.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        
+        if (objectionData) {
+          setCurrentObjection(objectionData)
+          if (objectionData.status === 'acknowledged') {
+            setHasAcknowledged(true)
+          }
+        }
+      }
     } catch (error) {
       console.error('Error:', error)
       toast.error('حدث خطأ في تحميل البيانات')
@@ -306,7 +453,7 @@ export default function SubscriberRequestDetailsPage() {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // قبول عرض السعر - مُصحح
+  // قبول عرض السعر - باستخدام Transaction
   // ═══════════════════════════════════════════════════════════════════════════════
 
   const handleAcceptQuote = async (quote: ServiceQuote) => {
@@ -322,77 +469,216 @@ export default function SubscriberRequestDetailsPage() {
     setAcceptingQuote(quote.id)
 
     try {
-      // 1. تحديث حالة العرض المقبول
-      const { error: updateQuoteError } = await supabase
-        .from('service_quotes')
-        .update({ 
-          status: 'accepted',
-          accepted_at: new Date().toISOString()
+      const { data, error } = await supabase.rpc('accept_quote', {
+        p_quote_id: quote.id,
+        p_request_id: requestId,
+        p_lawyer_id: quote.lawyer_id,
+        p_price: quote.price,
+        p_total_amount: quote.total_amount,
+        p_vat_amount: quote.vat_amount
+      })
+
+      if (error) throw error
+
+      try {
+        await supabase.from('notifications').insert({
+          recipient_type: 'lawyer',
+          recipient_id: quote.lawyer_id,
+          title: 'تم قبول عرضك! 🎉',
+          body: `تم قبول عرضك رقم ${quote.quote_number} بقيمة ${quote.total_amount.toLocaleString()} ر.س`,
+          icon: '✅',
+          notification_type: 'quote_accepted',
+          request_id: requestId,
+          quote_id: quote.id,
+          action_url: `/independent/my-tasks/${requestId}`,
+          is_read: false
         })
-        .eq('id', quote.id)
-
-      if (updateQuoteError) throw updateQuoteError
-
-      // 2. رفض باقي العروض
-      await supabase
-        .from('service_quotes')
-        .update({ 
-          status: 'rejected',
-          rejected_at: new Date().toISOString()
-        })
-        .eq('request_id', requestId)
-        .neq('id', quote.id)
-        .eq('status', 'pending')
-
-      // 3. تحديث حالة الطلب + تعيين المحامي (بدون accepted_quote_id)
-      const { error: updateRequestError } = await supabase
-        .from('service_requests')
-        .update({
-          status: 'in_progress',
-          assigned_lawyer_id: quote.lawyer_id,
-          assigned_at: new Date().toISOString(),
-          base_price: quote.price,
-          total_amount: quote.total_amount,
-          vat_amount: quote.vat_amount
-        })
-        .eq('id', requestId)
-
-      if (updateRequestError) throw updateRequestError
-
-      // 4. تحديث حالة الدفعة الأولى إلى pending (مستحقة)
-      if (quoteInstallments.length > 0) {
-        await supabase
-          .from('quote_installments')
-          .update({ status: 'pending' })
-          .eq('quote_id', quote.id)
-          .eq('installment_number', 1)
+      } catch (notifError) {
+        console.log('Notification error (non-critical):', notifError)
       }
-// 5. إرسال إشعار للمحامي
-try {
-  await supabase.from('notifications').insert({
-    recipient_type: 'lawyer',
-    recipient_id: quote.lawyer_id,
-    title: 'تم قبول عرضك! 🎉',
-    body: `تم قبول عرضك رقم ${quote.quote_number} بقيمة ${quote.total_amount.toLocaleString()} ر.س`,
-    icon: '✅',
-    notification_type: 'quote_accepted',
-    request_id: requestId,
-    quote_id: quote.id,
-    action_url: `/independent/tasks/${requestId}`,
-    is_read: false
-  })
-} catch (notifError) {
-  console.log('Notification error (non-critical):', notifError)
-}
+
       toast.success('✅ تم قبول العرض بنجاح!')
       setShowQuoteModal(false)
       loadData()
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error accepting quote:', error)
-      toast.error('حدث خطأ في قبول العرض')
+      toast.error(error.message || 'حدث خطأ في قبول العرض')
     } finally {
       setAcceptingQuote(null)
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // 🆕 تأكيد الاطلاع على الرد - يفتح نموذج التقييم
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  const handleAcknowledge = async () => {
+    // فتح نموذج التقييم بدلاً من الإغلاق المباشر
+    setShowRatingModal(true)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // 🆕 إرسال التقييم وإغلاق الطلب
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  const handleSubmitRating = async () => {
+    setSubmittingRating(true)
+    try {
+      // حساب التقييم العام للمحامي
+      const lawyerRatings = [
+        ratingForm.lawyer_acceptance_speed,
+        ratingForm.lawyer_responsiveness,
+        ratingForm.lawyer_understanding,
+        ratingForm.lawyer_price_value,
+        ratingForm.lawyer_updates
+      ].filter(r => r > 0)
+      
+      const lawyerOverall = lawyerRatings.length > 0 
+        ? lawyerRatings.reduce((a, b) => a + b, 0) / lawyerRatings.length 
+        : 0
+
+      // حفظ التقييم
+      await supabase.from('request_reviews').insert({
+        request_id: requestId,
+        member_id: currentUser?.memberId,
+        lawyer_id: lawyer?.id,
+        // تقييم المحامي
+        lawyer_acceptance_speed: ratingForm.lawyer_acceptance_speed || null,
+        lawyer_responsiveness: ratingForm.lawyer_responsiveness || null,
+        lawyer_understanding: ratingForm.lawyer_understanding || null,
+        lawyer_price_value: ratingForm.lawyer_price_value || null,
+        lawyer_updates: ratingForm.lawyer_updates || null,
+        lawyer_comment: ratingForm.lawyer_comment || null,
+        // تقييم التطبيق
+        app_navigation_difficulty: ratingForm.app_navigation_difficulty,
+        app_services_clarity: ratingForm.app_services_clarity || null,
+        app_ease_of_use: ratingForm.app_ease_of_use || null,
+        app_overall_experience: ratingForm.app_overall_experience || null,
+        app_comment: ratingForm.app_comment || null,
+        // تقييم الخدمة
+        service_quality: ratingForm.service_quality || null,
+        service_satisfaction: ratingForm.service_satisfaction || null,
+        service_library_experience: ratingForm.service_library_experience || null,
+        service_nolex_response: ratingForm.service_nolex_response || null,
+        service_comment: ratingForm.service_comment || null,
+        is_completed: true
+      })
+
+      // تسجيل الاطلاع
+      await supabase.from('request_objections').insert({
+        request_id: requestId,
+        member_id: currentUser?.memberId,
+        response_id: lawyerResponse?.id,
+        content: 'تم الاطلاع والموافقة على الرد',
+        status: 'acknowledged'
+      })
+
+      // إغلاق الطلب
+      await supabase
+        .from('service_requests')
+        .update({ status: 'closed', closed_at: new Date().toISOString() })
+        .eq('id', requestId)
+
+      // تحديث تقييم المحامي
+      if (lawyer?.id && lawyerOverall > 0) {
+        const { data: currentLawyer } = await supabase
+          .from('lawyers')
+          .select('rating_average, rating_count')
+          .eq('id', lawyer.id)
+          .single()
+
+        if (currentLawyer) {
+          const newCount = (currentLawyer.rating_count || 0) + 1
+          const newAverage = ((currentLawyer.rating_average || 0) * (currentLawyer.rating_count || 0) + lawyerOverall) / newCount
+          
+          await supabase
+            .from('lawyers')
+            .update({ rating_average: newAverage, rating_count: newCount })
+            .eq('id', lawyer.id)
+        }
+      }
+
+      toast.success('✅ شكراً لتقييمك!')
+      setShowRatingModal(false)
+      setHasAcknowledged(true)
+      loadData()
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('حدث خطأ في حفظ التقييم')
+    } finally {
+      setSubmittingRating(false)
+    }
+  }
+
+  // تخطي التقييم
+  const handleSkipRating = async () => {
+    try {
+      await supabase.from('request_objections').insert({
+        request_id: requestId,
+        member_id: currentUser?.memberId,
+        response_id: lawyerResponse?.id,
+        content: 'تم الاطلاع والموافقة على الرد',
+        status: 'acknowledged'
+      })
+
+      await supabase
+        .from('service_requests')
+        .update({ status: 'closed', closed_at: new Date().toISOString() })
+        .eq('id', requestId)
+
+      toast.success('✅ تم تأكيد الاطلاع')
+      setShowRatingModal(false)
+      setHasAcknowledged(true)
+      loadData()
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('حدث خطأ')
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // 🆕 إرسال اعتراض
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  const handleSubmitObjection = async () => {
+    if (!objectionContent.trim()) {
+      toast.error('يرجى كتابة سبب الاعتراض')
+      return
+    }
+
+    setSubmittingObjection(true)
+    try {
+      await supabase.from('request_objections').insert({
+        request_id: requestId,
+        member_id: currentUser?.memberId,
+        response_id: lawyerResponse?.id,
+        content: objectionContent,
+        status: 'pending'
+      })
+
+      await supabase.from('notifications').insert({
+        recipient_type: 'lawyer',
+        recipient_id: lawyer?.id,
+        title: '⚠️ اعتراض من المشترك',
+        body: `المشترك اعترض على الرد النهائي للطلب ${request?.ticket_number}`,
+        icon: '⚠️',
+        notification_type: 'objection',
+        request_id: requestId,
+        action_url: `/independent/my-tasks/${requestId}`,
+        is_read: false
+      })
+
+      toast.success('✅ تم إرسال الاعتراض')
+      setShowObjectionModal(false)
+      setObjectionContent('')
+      setHasAcknowledged(true)
+      loadData()
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('حدث خطأ في إرسال الاعتراض')
+    } finally {
+      setSubmittingObjection(false)
     }
   }
 
@@ -402,7 +688,80 @@ try {
 
   const formatDate = (date: string) => date ? new Date(date).toLocaleDateString('ar-SA') : '-'
   const formatDateTime = (date: string) => date ? new Date(date).toLocaleString('ar-SA') : '-'
+  // رفع الوكالة
+  const handleUploadPoa = async () => {
+    if (!poaFile || !poaNumber || !poaDate) {
+      toast.error('يرجى ملء جميع الحقول ورفع ملف الوكالة')
+      return
+    }
+
+    try {
+      setUploadingPoa(true)
+
+      // رفع الملف
+      const fileName = `${requestId}/${Date.now()}_${poaFile.name}`
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('user-documents')
+        .upload(fileName, poaFile)
+
+      if (uploadError) throw uploadError
+
+      // الحصول على الرابط العام
+      const { data: urlData } = supabase.storage
+        .from('user-documents')
+        .getPublicUrl(fileName)
+
+      // تحديث طلب الوكالة
+      const { error: updateError } = await supabase
+        .from('power_of_attorneys')
+        .update({
+          poa_number: poaNumber,
+          poa_date: poaDate,
+          poa_document: urlData.publicUrl,
+          status: 'submitted',
+          submitted_at: new Date().toISOString()
+        })
+        .eq('request_id', requestId)
+
+      if (updateError) throw updateError
+
+      // تحديث حالة الطلب
+      await supabase
+        .from('service_requests')
+        .update({ status: 'poa_submitted' })
+        .eq('id', requestId)
+
+      // إرسال إشعار للمحامي
+      await supabase.from('notifications').insert({
+        recipient_type: 'lawyer',
+        recipient_id: request.assigned_lawyer_id,
+        title: '📄 تم رفع الوكالة',
+        body: `المشترك رفع الوكالة للطلب ${request.ticket_number}`,
+        notification_type: 'poa_submitted',
+        request_id: requestId,
+        is_read: false
+      })
+
+      toast.success('✅ تم رفع الوكالة بنجاح')
+      setRequest((prev: any) => ({ ...prev, status: 'poa_submitted' }))
+      setPoaFile(null)
+      setPoaNumber('')
+      setPoaDate('')
+
+    } catch (err: any) {
+      console.error('Error:', err)
+      toast.error('حدث خطأ: ' + err.message)
+    } finally {
+      setUploadingPoa(false)
+    }
+  }
   const formatPrice = (amount: number) => amount ? `${amount.toLocaleString()} ر.س` : '-'
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  }
 
   const isQuoteValid = (validUntil: string) => new Date(validUntil) > new Date()
 
@@ -504,8 +863,272 @@ try {
         <div className="lg:col-span-2 space-y-4">
           
           {/* ════════════════════════════════════════════════════════════════════
-              🆕 جدول العروض المختصر
+              🆕 الرد النهائي من المحامي (للطلبات المكتملة)
           ════════════════════════════════════════════════════════════════════ */}
+{/* ════════════════════════════════════════════════════════════════════
+              🆕 تنبيه طلب الوكالة
+          ════════════════════════════════════════════════════════════════════ */}
+          {/* ════════════════════════════════════════════════════════════════════
+              🆕 نموذج رفع الوكالة
+          ════════════════════════════════════════════════════════════════════ */}
+          {request.status === 'pending_poa' && (
+            <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl shadow-sm overflow-hidden border-2 border-amber-300">
+              <div className="bg-gradient-to-l from-amber-500 to-orange-500 text-white p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-2xl">
+                    📄
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">مطلوب إصدار وكالة</h3>
+                    <p className="text-sm opacity-90">المحامي يطلب منك إصدار وكالة شرعية</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 space-y-4">
+                <p className="text-amber-800">
+                  يرجى إصدار وكالة شرعية من ناجز ثم رفعها هنا مع رقمها وتاريخها.
+                </p>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">رقم الوكالة *</label>
+                    <input
+                      type="text"
+                      value={poaNumber}
+                      onChange={(e) => setPoaNumber(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                      placeholder="مثال: 123456789"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">تاريخ الوكالة *</label>
+                    <input
+                      type="date"
+                      value={poaDate}
+                      onChange={(e) => setPoaDate(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">ملف الوكالة *</label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-amber-500 transition cursor-pointer">
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={(e) => setPoaFile(e.target.files?.[0] || null)}
+                      className="hidden"
+                      id="poa-file-input"
+                    />
+                    <label htmlFor="poa-file-input" className="cursor-pointer">
+                      {poaFile ? (
+                        <div className="text-green-600">
+                          <span className="text-2xl">✅</span>
+                          <p className="font-medium mt-2">{poaFile.name}</p>
+                        </div>
+                      ) : (
+                        <div className="text-gray-500">
+                          <span className="text-3xl">📁</span>
+                          <p className="mt-2">اضغط لاختيار ملف الوكالة</p>
+                          <p className="text-xs">PDF, JPG, PNG</p>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleUploadPoa}
+                  disabled={uploadingPoa || !poaFile || !poaNumber || !poaDate}
+                  className="w-full py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {uploadingPoa ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      جاري الرفع...
+                    </>
+                  ) : (
+                    <>
+                      <span>📤</span> رفع الوكالة
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}         
+          {(request.status === 'completed' || request.status === 'closed' || request.status === 'objection_raised' || request.status === 'objection_responded') && (lawyerResponse || currentObjection) && (
+            <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl shadow-sm overflow-hidden border-2 border-emerald-200">
+              <div className="bg-gradient-to-l from-emerald-600 to-green-600 text-white p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-2xl">
+                    ✅
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">الرد النهائي من المحامي</h3>
+                    <p className="text-sm opacity-90">تم إكمال طلبك بنجاح</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {/* الرد النهائي */}
+                <div>
+                  <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-emerald-600" />
+                    الرد النهائي
+                  </h4>
+                  <div className="bg-white rounded-xl p-4 border border-emerald-100">
+                    <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">
+                      {lawyerResponse.response_content}
+                    </p>
+                  </div>
+                </div>
+
+                {/* التوصيات */}
+                {lawyerResponse.recommendations && (
+                  <div>
+                    <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-2">
+                      <Star className="w-5 h-5 text-amber-500" />
+                      التوصيات
+                    </h4>
+                    <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                      <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">
+                        {lawyerResponse.recommendations}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* الملفات المرفقة */}
+                {requestFiles.length > 0 && (
+                  <div>
+                    <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-2">
+                      <Download className="w-5 h-5 text-blue-500" />
+                      المستندات المرفقة ({requestFiles.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {requestFiles.map((file) => (
+                        <a
+                          key={file.id}
+                          href={file.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                        >
+                          <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                            <span className="text-red-600 font-bold text-xs">PDF</span>
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-slate-700">{file.file_name}</p>
+                            <p className="text-xs text-slate-500">
+                              {formatFileSize(file.file_size)} • {formatDate(file.created_at)}
+                            </p>
+                          </div>
+                          <Eye className="w-5 h-5 text-blue-500" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+{/* ⚠️ قسم الاعتراض ورد المحامي */}
+{currentObjection && (
+                  <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-xl p-5 border-2 border-orange-200 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">⚠️</span>
+                      <h4 className="font-bold text-orange-800">اعتراضك على الطلب</h4>
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                        currentObjection.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        currentObjection.status === 'responded' ? 'bg-blue-100 text-blue-800' :
+                        currentObjection.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {currentObjection.status === 'pending' ? 'بانتظار رد المحامي' :
+                         currentObjection.status === 'responded' ? 'تم الرد' :
+                         currentObjection.status === 'resolved' ? 'تم الحل' : currentObjection.status}
+                      </span>
+                    </div>
+
+                    {/* سبب الاعتراض */}
+                    <div className="bg-white rounded-lg p-4 border border-orange-100">
+                      <p className="text-sm text-gray-500 mb-1">سبب اعتراضك:</p>
+                      <p className="text-gray-800">{currentObjection.content}</p>
+                      <p className="text-xs text-gray-400 mt-2">
+                        {new Date(currentObjection.created_at).toLocaleDateString('ar-SA')}
+                      </p>
+                    </div>
+
+                    {/* رد المحامي */}
+                    {currentObjection.lawyer_response && (
+                      <div className="bg-blue-50 rounded-lg p-4 border-r-4 border-blue-500">
+                        <p className="text-sm text-blue-600 mb-1 font-bold">💬 رد المحامي:</p>
+                        <p className="text-gray-800">{currentObjection.lawyer_response}</p>
+                        {currentObjection.lawyer_responded_at && (
+                          <p className="text-xs text-blue-400 mt-2">
+                            {new Date(currentObjection.lawyer_responded_at).toLocaleDateString('ar-SA')}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* أزرار للمشترك */}
+                    {currentObjection.status === 'responded' && (
+                      <div className="flex gap-3">
+                        <button
+                          onClick={async () => {
+                            await supabase.from('request_objections').update({ status: 'resolved' }).eq('id', currentObjection.id)
+                            await supabase.from('service_requests').update({ status: 'completed' }).eq('id', requestId)
+                            toast.success('✅ تم قبول الرد وإغلاق الاعتراض')
+                            loadData()
+                          }}
+                          className="flex-1 py-3 bg-green-500 text-white rounded-xl font-bold hover:bg-green-600"
+                        >
+                          ✅ قبول الرد
+                        </button>
+                        <button
+                          onClick={async () => {
+                            await supabase.from('request_objections').update({ status: 'escalated', escalated_at: new Date().toISOString() }).eq('id', currentObjection.id)
+                            toast.success('📤 تم تصعيد الاعتراض للإدارة')
+                            loadData()
+                          }}
+                          className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600"
+                        >
+                          📤 تصعيد للإدارة
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* أزرار الإجراءات */}
+                {!hasAcknowledged && request.status === 'completed' && (
+                  <div className="flex gap-3 pt-4 border-t border-emerald-200">
+                    <button
+                      onClick={handleAcknowledge}
+                      className="flex-1 py-3 bg-gradient-to-l from-emerald-600 to-green-600 text-white rounded-xl font-bold hover:from-emerald-700 hover:to-green-700 transition-all flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle className="w-5 h-5" />
+                      تم الاطلاع والموافقة
+                    </button>
+                    <button
+                      onClick={() => setShowObjectionModal(true)}
+                      className="flex-1 py-3 bg-gradient-to-l from-red-500 to-orange-500 text-white rounded-xl font-bold hover:from-red-600 hover:to-orange-600 transition-all flex items-center justify-center gap-2"
+                    >
+                      <AlertCircle className="w-5 h-5" />
+                      اعتراض
+                    </button>
+                  </div>
+                )}
+
+                {(hasAcknowledged || request.status === 'closed') && (
+                  <div className="bg-emerald-100 rounded-lg p-3 text-center">
+                    <p className="text-emerald-700 font-medium">✅ تم تسجيل ردك على هذا الطلب</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* جدول العروض */}
           {pendingQuotes.length > 0 && !acceptedQuote && (
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <div className="bg-gradient-to-l from-amber-500 to-orange-500 text-white p-4">
@@ -520,7 +1143,6 @@ try {
                 </div>
               </div>
               
-              {/* جدول العروض */}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-slate-50">
@@ -648,40 +1270,6 @@ try {
                     <p className="text-xs text-slate-500">شامل الضريبة</p>
                   </div>
                 </div>
-                {acceptedQuote.service_description && (
-                  <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg">{acceptedQuote.service_description}</p>
-                )}
-                
-                {/* عرض الدفعات للعرض المقبول */}
-                {installments[acceptedQuote.id]?.length > 1 && (
-                  <div className="mt-4">
-                    <h4 className="font-bold text-slate-700 mb-2 text-sm">جدول الدفعات:</h4>
-                    <div className="space-y-2">
-                      {installments[acceptedQuote.id].map((inst) => (
-                        <div key={inst.id} className={`flex items-center justify-between p-2 rounded-lg ${
-                          inst.status === 'paid' ? 'bg-green-100' : inst.status === 'pending' ? 'bg-amber-100' : 'bg-slate-100'
-                        }`}>
-                          <div className="flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-full bg-slate-600 text-white text-xs flex items-center justify-center">
-                              {inst.installment_number}
-                            </span>
-                            <span className="text-sm">{inst.description}</span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-bold">{inst.amount.toLocaleString()} ر.س</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              inst.status === 'paid' ? 'bg-green-600 text-white' : 
-                              inst.status === 'pending' ? 'bg-amber-600 text-white' : 
-                              'bg-slate-400 text-white'
-                            }`}>
-                              {inst.status === 'paid' ? 'مدفوعة' : inst.status === 'pending' ? 'مستحقة' : 'قادمة'}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -923,12 +1511,11 @@ try {
       </div>
 
       {/* ════════════════════════════════════════════════════════════════════
-          🆕 Modal تفاصيل العرض
+          Modal تفاصيل العرض
       ════════════════════════════════════════════════════════════════════ */}
       {showQuoteModal && selectedQuote && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
-            {/* Header */}
             <div className="bg-gradient-to-l from-slate-800 to-slate-900 text-white p-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -944,9 +1531,6 @@ try {
                         <span className="text-slate-400">({selectedQuote.lawyer.rating_count || 0} تقييم)</span>
                       </div>
                     )}
-                    {selectedQuote.lawyer?.city && (
-                      <p className="text-xs text-slate-300">📍 {selectedQuote.lawyer.city}</p>
-                    )}
                   </div>
                 </div>
                 
@@ -957,18 +1541,9 @@ try {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              
-              <div className="mt-4 flex items-center justify-between">
-                <span className="text-sm opacity-80">رقم العرض: {selectedQuote.quote_number}</span>
-                <span className={`text-xs px-3 py-1 rounded-full ${getTimeRemaining(selectedQuote.valid_until).bg}`}>
-                  ⏰ {getTimeRemaining(selectedQuote.valid_until).text}
-                </span>
-              </div>
             </div>
 
-            {/* Content */}
             <div className="p-6 overflow-y-auto max-h-[60vh]">
-              {/* وصف الخدمة */}
               {selectedQuote.service_description && (
                 <div className="mb-5">
                   <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-2">
@@ -981,7 +1556,6 @@ try {
                 </div>
               )}
 
-              {/* جدول الدفعات */}
               {installments[selectedQuote.id]?.length > 1 && (
                 <div className="mb-5">
                   <h4 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
@@ -1023,7 +1597,6 @@ try {
                 </div>
               )}
 
-              {/* ملخص السعر */}
               <div className="bg-gradient-to-l from-green-50 to-emerald-50 rounded-xl p-5 border border-green-200">
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="text-center p-3 bg-white rounded-lg">
@@ -1037,20 +1610,12 @@ try {
                 </div>
                 
                 <div className="flex items-center justify-between pt-4 border-t border-green-200">
-                  <div>
-                    <span className="text-slate-600 font-medium">الإجمالي شامل الضريبة</span>
-                    {installments[selectedQuote.id]?.length > 1 && (
-                      <p className="text-xs text-purple-600 mt-1">
-                        💳 الدفعة الأولى عند القبول: {installments[selectedQuote.id][0]?.amount.toLocaleString()} ر.س فقط
-                      </p>
-                    )}
-                  </div>
+                  <span className="text-slate-600 font-medium">الإجمالي شامل الضريبة</span>
                   <span className="text-3xl font-black text-green-600">{formatPrice(selectedQuote.total_amount)}</span>
                 </div>
               </div>
             </div>
 
-            {/* Footer */}
             <div className="p-4 border-t bg-slate-50 flex gap-3">
               <button
                 onClick={() => setShowQuoteModal(false)}
@@ -1065,10 +1630,7 @@ try {
                   className="flex-1 py-3 bg-gradient-to-l from-green-600 to-emerald-600 text-white rounded-xl font-bold hover:from-green-700 hover:to-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {acceptingQuote === selectedQuote.id ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      جاري القبول...
-                    </>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                   ) : (
                     <>
                       <CheckCircle className="w-5 h-5" />
@@ -1077,6 +1639,251 @@ try {
                   )}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          🆕 Modal الاعتراض
+      ════════════════════════════════════════════════════════════════════ */}
+      {showObjectionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden">
+            <div className="bg-gradient-to-l from-red-500 to-orange-500 text-white p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="w-8 h-8" />
+                  <h2 className="font-bold text-lg">تقديم اعتراض</h2>
+                </div>
+                <button
+                  onClick={() => setShowObjectionModal(false)}
+                  className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5">
+              <p className="text-slate-600 mb-4">
+                يرجى توضيح سبب اعتراضك على الرد النهائي. سيتم مراجعة اعتراضك من قبل الإدارة.
+              </p>
+              
+              <textarea
+                value={objectionContent}
+                onChange={(e) => setObjectionContent(e.target.value)}
+                placeholder="اكتب سبب الاعتراض بالتفصيل..."
+                className="w-full h-32 p-3 border border-slate-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+            </div>
+
+            <div className="p-4 border-t bg-slate-50 flex gap-3">
+              <button
+                onClick={() => setShowObjectionModal(false)}
+                className="flex-1 py-3 bg-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-300"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleSubmitObjection}
+                disabled={submittingObjection || !objectionContent.trim()}
+                className="flex-1 py-3 bg-gradient-to-l from-red-500 to-orange-500 text-white rounded-xl font-bold hover:from-red-600 hover:to-orange-600 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {submittingObjection ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    جاري الإرسال...
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-5 h-5" />
+                    إرسال الاعتراض
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          🆕 Modal التقييم
+      ════════════════════════════════════════════════════════════════════ */}
+      {showRatingModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-2xl my-8 overflow-hidden">
+            <div className="bg-gradient-to-l from-amber-500 to-yellow-500 text-white p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Star className="w-8 h-8" />
+                  <div>
+                    <h2 className="font-bold text-lg">قيّم تجربتك</h2>
+                    <p className="text-sm opacity-90">ساعدنا في تحسين خدماتنا</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowRatingModal(false)}
+                  className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 max-h-[70vh] overflow-y-auto space-y-6">
+              
+              {/* تقييم المحامي */}
+              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2">
+                  <User className="w-5 h-5" />
+                  تقييم المحامي
+                </h3>
+                
+                <div className="space-y-4">
+                  <RatingRow 
+                    label="سرعة القبول"
+                    value={ratingForm.lawyer_acceptance_speed}
+                    onChange={(v) => setRatingForm({...ratingForm, lawyer_acceptance_speed: v})}
+                  />
+                  <RatingRow 
+                    label="سرعة الاستجابة"
+                    value={ratingForm.lawyer_responsiveness}
+                    onChange={(v) => setRatingForm({...ratingForm, lawyer_responsiveness: v})}
+                  />
+                  <RatingRow 
+                    label="فهم المشكلة"
+                    value={ratingForm.lawyer_understanding}
+                    onChange={(v) => setRatingForm({...ratingForm, lawyer_understanding: v})}
+                  />
+                  <RatingRow 
+                    label="جودة السعر"
+                    value={ratingForm.lawyer_price_value}
+                    onChange={(v) => setRatingForm({...ratingForm, lawyer_price_value: v})}
+                  />
+                  <RatingRow 
+                    label="التحديثات المستمرة"
+                    value={ratingForm.lawyer_updates}
+                    onChange={(v) => setRatingForm({...ratingForm, lawyer_updates: v})}
+                  />
+                  
+                  <textarea
+                    value={ratingForm.lawyer_comment}
+                    onChange={(e) => setRatingForm({...ratingForm, lawyer_comment: e.target.value})}
+                    placeholder="تعليق على المحامي (اختياري)..."
+                    className="w-full h-20 p-3 border border-blue-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* تقييم الخدمة */}
+              <div className="bg-green-50 rounded-xl p-4 border border-green-100">
+                <h3 className="font-bold text-green-800 mb-4 flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5" />
+                  تقييم الخدمة
+                </h3>
+                
+                <div className="space-y-4">
+                  <RatingRow 
+                    label="جودة الخدمة"
+                    value={ratingForm.service_quality}
+                    onChange={(v) => setRatingForm({...ratingForm, service_quality: v})}
+                  />
+                  <RatingRow 
+                    label="الرضا العام"
+                    value={ratingForm.service_satisfaction}
+                    onChange={(v) => setRatingForm({...ratingForm, service_satisfaction: v})}
+                  />
+                  <RatingRow 
+                    label="تجربة المكتبة القانونية"
+                    value={ratingForm.service_library_experience}
+                    onChange={(v) => setRatingForm({...ratingForm, service_library_experience: v})}
+                  />
+                  <RatingRow 
+                    label="استجابة NOLEX"
+                    value={ratingForm.service_nolex_response}
+                    onChange={(v) => setRatingForm({...ratingForm, service_nolex_response: v})}
+                  />
+                  
+                  <textarea
+                    value={ratingForm.service_comment}
+                    onChange={(e) => setRatingForm({...ratingForm, service_comment: e.target.value})}
+                    placeholder="تعليق على الخدمة (اختياري)..."
+                    className="w-full h-20 p-3 border border-green-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* تقييم التطبيق */}
+              <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                <h3 className="font-bold text-purple-800 mb-4 flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  تقييم التطبيق
+                </h3>
+                
+                <div className="space-y-4">
+                  <RatingRow 
+                    label="وضوح الخدمات"
+                    value={ratingForm.app_services_clarity}
+                    onChange={(v) => setRatingForm({...ratingForm, app_services_clarity: v})}
+                  />
+                  <RatingRow 
+                    label="سهولة الاستخدام"
+                    value={ratingForm.app_ease_of_use}
+                    onChange={(v) => setRatingForm({...ratingForm, app_ease_of_use: v})}
+                  />
+                  <RatingRow 
+                    label="التجربة العامة"
+                    value={ratingForm.app_overall_experience}
+                    onChange={(v) => setRatingForm({...ratingForm, app_overall_experience: v})}
+                  />
+                  
+                  <div className="flex items-center gap-3 py-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={ratingForm.app_navigation_difficulty}
+                        onChange={(e) => setRatingForm({...ratingForm, app_navigation_difficulty: e.target.checked})}
+                        className="w-5 h-5 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-slate-700">واجهت صعوبة في التنقل</span>
+                    </label>
+                  </div>
+                  
+                  <textarea
+                    value={ratingForm.app_comment}
+                    onChange={(e) => setRatingForm({...ratingForm, app_comment: e.target.value})}
+                    placeholder="تعليق على التطبيق (اختياري)..."
+                    className="w-full h-20 p-3 border border-purple-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t bg-slate-50 flex gap-3">
+              <button
+                onClick={handleSkipRating}
+                className="flex-1 py-3 bg-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-300"
+              >
+                تخطي
+              </button>
+              <button
+                onClick={handleSubmitRating}
+                disabled={submittingRating}
+                className="flex-1 py-3 bg-gradient-to-l from-amber-500 to-yellow-500 text-white rounded-xl font-bold hover:from-amber-600 hover:to-yellow-600 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {submittingRating ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    جاري الإرسال...
+                  </>
+                ) : (
+                  <>
+                    <Star className="w-5 h-5" />
+                    إرسال التقييم
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

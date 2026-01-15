@@ -38,7 +38,7 @@ export default function RatingsPage() {
       else if (filterPeriod === 'year') startDate = new Date(now.getFullYear(), 0, 1)
 
       let query = supabase
-        .from('ratings')
+        .from('request_reviews')
         .select(`*, request:request_id (ticket_number, title, request_type)`)
         .eq('lawyer_id', lawyerId)
         .order('created_at', { ascending: false })
@@ -52,12 +52,12 @@ export default function RatingsPage() {
 
       const total = ratingsData?.length || 0
       if (total > 0) {
-        const avgLawyer = ratingsData!.reduce((sum, r) => sum + (r.lawyer_rating || 0), 0) / total
-        const avgService = ratingsData!.reduce((sum, r) => sum + (r.service_rating || 0), 0) / total
-        const avgPlatform = ratingsData!.reduce((sum, r) => sum + (r.platform_rating || 0), 0) / total
+        const avgLawyer = ratingsData!.reduce((sum, r) => sum + (r.lawyer_overall_rating || 0), 0) / total
+        const avgService = ratingsData!.reduce((sum, r) => sum + (r.service_quality || 0), 0) / total
+        const avgPlatform = ratingsData!.reduce((sum, r) => sum + (r.app_overall_experience || 0), 0) / total
         const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
         ratingsData!.forEach(r => {
-          const rating = r.lawyer_rating
+          const rating = r.lawyer_overall_rating
           if (rating >= 1 && rating <= 5) distribution[rating as keyof typeof distribution]++
         })
         setStats({ totalRatings: total, avgLawyer: Math.round(avgLawyer * 10) / 10, avgService: Math.round(avgService * 10) / 10, avgPlatform: Math.round(avgPlatform * 10) / 10, distribution })
@@ -87,7 +87,7 @@ export default function RatingsPage() {
     setIsSaving(true)
     try {
       const { error } = await supabase
-        .from('ratings')
+        .from('request_reviews')
         .update({ lawyer_reply: replyText.trim(), replied_at: new Date().toISOString() })
         .eq('id', replyModal.rating.id)
 
@@ -110,7 +110,7 @@ export default function RatingsPage() {
     if (!confirm('هل تريد حذف الرد؟')) return
     try {
       await supabase
-        .from('ratings')
+        .from('request_reviews')
         .update({ lawyer_reply: null, replied_at: null })
         .eq('id', ratingId)
 
@@ -137,7 +137,7 @@ export default function RatingsPage() {
     return 'text-red-600'
   }
 
-  const filteredRatings = ratings.filter(r => filterRating === 'all' || r.lawyer_rating === filterRating)
+  const filteredRatings = ratings.filter(r => filterRating === 'all' || r.lawyer_overall_rating === filterRating)
   const getDistributionPercent = (count: number) => stats.totalRatings === 0 ? 0 : (count / stats.totalRatings) * 100
 
   if (isLoading) {

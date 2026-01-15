@@ -17,6 +17,7 @@ const menuItems = [
   { href: '/subscriber/extra-services', label: 'خدمات إضافية', icon: '➕' },
   { href: '/subscriber/calendar', label: 'التقويم', icon: '📅' },
   { href: '/subscriber/inbox', label: 'مركز التواصل', icon: '💬' },
+  { href: '/subscriber/ratings', label: 'تقييماتي', icon: '⭐' },
 ]
 
 const accountItems = [

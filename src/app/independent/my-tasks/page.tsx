@@ -58,7 +58,7 @@ export default function MyTasksPage() {
         .from('service_requests')
         .select('*')
         .eq('assigned_lawyer_id', id)
-        .eq('is_accepted', true)
+        .in('status', ['in_progress', 'accepted', 'pending_poa', 'poa_submitted', 'poa_approved', 'case_opened', 'completed', 'objected', 'objection_raised', 'objection_responded'])
         .order('accepted_at', { ascending: false })
       
       if (error) {
