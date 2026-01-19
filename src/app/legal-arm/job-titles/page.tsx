@@ -153,8 +153,8 @@ export default function LegalArmJobTitlesPage() {
     setShowModal(true)
   }
 
-  const categories = [...new Set(refJobTitles.map(t => t.category))].filter(Boolean)
-  
+  const categories = Array.from(new Set(refJobTitles.map(t => t.category))).filter(Boolean)
+    
   const getTitlesByCategory = (category: string) => {
     return refJobTitles.filter(t => t.category === category)
   }

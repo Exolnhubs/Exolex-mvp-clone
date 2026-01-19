@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Calendar, 
-  LayoutDashboard, Users, Building2, Shield, 
+  LayoutDashboard, Users, Building2, Shield, Briefcase, 
   FileText, Scale, UserCircle, Receipt, FileSignature,
   Wrench, Wallet, BarChart3, Settings, Bell, FolderOpen,
   Menu, X, LogOut, ChevronDown, Gavel, Network
@@ -24,7 +24,9 @@ const menuItems = [
     label: 'إدارة الفريق', 
     icon: Users,
     children: [
-      { href: '/legal-arm/organization', label: 'الهيكل التنظيمي', icon: Network },
+      { href: '/legal-arm/employees', label: 'الموظفين', icon: Users },
+      { href: '/legal-arm/departments', label: 'الأقسام', icon: Building2 },
+      { href: '/legal-arm/job-titles', label: 'المسميات الوظيفية', icon: Briefcase },
       { href: '/legal-arm/permissions', label: 'الصلاحيات', icon: Shield },
     ]
   },
@@ -120,7 +122,7 @@ export default function LegalArmLayout({ children }: { children: React.ReactNode
           ))}
         </nav>
         <div className="p-3 border-t border-purple-700">
-          <button onClick={() => { localStorage.removeItem('exolex_legal_arm_id'); router.push('/auth/legal-arm-login') }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400 hover:bg-red-500/10 ${!isSidebarOpen && !isMobile ? 'justify-center' : ''}`}>
+          <button onClick={() => { localStorage.removeItem('exolex_arm_id'); router.push('/auth/legal-arm-login') }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400 hover:bg-red-500/10 ${!isSidebarOpen && !isMobile ? 'justify-center' : ''}`}>
             <LogOut className="w-5 h-5" />{(isSidebarOpen || isMobile) && <span className="text-sm">تسجيل الخروج</span>}
           </button>
         </div>

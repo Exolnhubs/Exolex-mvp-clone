@@ -1,7 +1,5 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
-
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -10,8 +8,8 @@ import { supabase } from '@/lib/supabase'
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة دخول المحامين
-// 📅 تاريخ التحديث: 4 يناير 2026
-// 🎯 الغرض: دخول المحامين (مستقل/ذراع/شريك) برقم الرخصة + OTP
+// 📅 تاريخ التحديث: 18 يناير 2026
+// 🎯 الغرض: دخول المحامين (مستقل/ذراع/شريك) برقم الهوية + OTP
 // ═══════════════════════════════════════════════════════════════
 // 
 // 📋 أنواع المحامين والتوجيه:
@@ -25,7 +23,6 @@ import { supabase } from '@/lib/supabase'
 // │                 │ (legal_arm_id = NULL)│                              │
 // ├─────────────────┼─────────────────────┼──────────────────────────────┤
 // │ محامي شريك      │ partner_employees   │ /partner-employee/dashboard  │
-// │                 │ (license_number ≠ NULL)│                            │
 // └─────────────────┴─────────────────────┴──────────────────────────────┘
 //
 // 📦 localStorage المستخدم:
@@ -34,47 +31,65 @@ import { supabase } from '@/lib/supabase'
 // - محامي شريك: exolex_employee_id, exolex_employee_code, exolex_partner_id
 // ═══════════════════════════════════════════════════════════════
 
+interface AccountData {
+  id: string
+  full_name: string
+  phone: string
+  national_id: string
+  status: string
+  lawyer_code?: string
+  employee_code?: string
+  legal_arm_id?: string
+  partner_id?: string
+  type: 'lawyer' | 'partner_employee'
+}
+
 export default function LawyerLoginPage() {
   const router = useRouter()
   const [step, setStep] = useState<'input' | 'otp'>('input')
   const [isLoading, setIsLoading] = useState(false)
   
-  const [licenseNumber, setLicenseNumber] = useState('')
-  const [phone, setPhone] = useState('')
+  const [nationalId, setNationalId] = useState('')
+  const [maskedPhone, setMaskedPhone] = useState('')
+  const [accountData, setAccountData] = useState<AccountData | null>(null)
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
 
   // ─────────────────────────────────────────────────────────────
-  // التحقق من صحة البيانات
+  // التحقق من صحة رقم الهوية
   // ─────────────────────────────────────────────────────────────
   
-  const validateLicenseNumber = (license: string): boolean => {
-    return license.trim().length >= 3
-  }
-
-  const validatePhone = (p: string): boolean => {
-    const phoneClean = p.replace(/\D/g, '')
-    return phoneClean.length === 9 && phoneClean.startsWith('5')
+  const validateNationalId = (id: string): boolean => {
+    const cleanId = id.replace(/\D/g, '')
+    // رقم الهوية السعودية 10 أرقام يبدأ بـ 1
+    // رقم الإقامة 10 أرقام يبدأ بـ 2
+    return cleanId.length === 10 && (cleanId.startsWith('1') || cleanId.startsWith('2'))
   }
 
   // ─────────────────────────────────────────────────────────────
-  // إرسال رمز التحقق OTP
+  // إخفاء رقم الجوال (0550***580)
+  // ─────────────────────────────────────────────────────────────
+  const maskPhone = (phone: string): string => {
+    const clean = phone.replace(/\D/g, '').slice(-9)
+    if (clean.length === 9) {
+      return `05${clean.slice(1, 3)}***${clean.slice(-2)}`
+    }
+    return phone
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // البحث عن الحساب وإرسال OTP
   // ─────────────────────────────────────────────────────────────
   
   const handleSendOTP = async () => {
-    if (!validateLicenseNumber(licenseNumber)) {
-      toast.error('الرجاء إدخال رقم الرخصة بشكل صحيح')
-      return
-    }
-    
-    if (!validatePhone(phone)) {
-      toast.error('رقم الجوال يجب أن يكون 9 أرقام ويبدأ بـ 5')
+    if (!validateNationalId(nationalId)) {
+      toast.error('الرجاء إدخال رقم هوية صحيح (10 أرقام)')
       return
     }
 
     setIsLoading(true)
     
     try {
-      const fullPhone = '+966' + phone
+      const cleanNationalId = nationalId.replace(/\D/g, '')
 
       // ═══════════════════════════════════════════════════════════
       // البحث في جدول lawyers أولاً
@@ -82,193 +97,244 @@ export default function LawyerLoginPage() {
       // ═══════════════════════════════════════════════════════════
       const { data: lawyerData } = await supabase
         .from('lawyers')
-        .select('id, phone, license_number, legal_arm_id, lawyer_code, status, full_name')
-        .eq('license_number', licenseNumber.trim())
+        .select('id, phone, national_id, legal_arm_id, lawyer_code, status, full_name')
+        .eq('national_id', cleanNationalId)
         .single()
 
       // ═══════════════════════════════════════════════════════════
       // إذا لم يوجد في lawyers، نبحث في partner_employees
-      // يشمل: محامي الشريك (موظف لديه رخصة)
+      // يشمل: محامي الشريك
       // ═══════════════════════════════════════════════════════════
       let partnerEmployeeData = null
       if (!lawyerData) {
         const { data: peData } = await supabase
           .from('partner_employees')
-          .select('id, phone, license_number, status, partner_id, employee_code, full_name')
-          .eq('license_number', licenseNumber.trim())
+          .select('id, phone, national_id, status, partner_id, employee_code, full_name')
+          .eq('national_id', cleanNationalId)
           .single()
         partnerEmployeeData = peData
       }
 
       // التحقق من وجود الحساب
       if (!lawyerData && !partnerEmployeeData) {
-        toast.error('رقم الرخصة غير مسجل في النظام')
+        toast.error('رقم الهوية غير مسجل في النظام')
         setIsLoading(false)
         return
       }
 
+      // تحديد نوع الحساب والبيانات
+const rawData = lawyerData || partnerEmployeeData
+if (!rawData) {
+  toast.error('رقم الهوية غير مسجل في النظام')
+  setIsLoading(false)
+  return
+}
+const accData: AccountData = {
+        id: rawData.id,
+        full_name: rawData.full_name,
+        phone: rawData.phone,
+        national_id: rawData.national_id,
+        status: rawData.status,
+        type: lawyerData ? 'lawyer' : 'partner_employee',
+        lawyer_code: lawyerData?.lawyer_code,
+        employee_code: partnerEmployeeData?.employee_code,
+        legal_arm_id: lawyerData?.legal_arm_id,
+        partner_id: partnerEmployeeData?.partner_id
+      }
+
       // التحقق من حالة الحساب
-      const accountData = lawyerData || partnerEmployeeData
-      if (accountData.status === 'suspended') {
+      if (accData.status === 'suspended') {
         toast.error('حسابك موقوف، الرجاء التواصل مع الدعم')
         setIsLoading(false)
         return
       }
 
-      if (accountData.status === 'pending') {
+      if (accData.status === 'pending') {
         toast.error('حسابك قيد المراجعة، سيتم إشعارك عند التفعيل')
         setIsLoading(false)
         return
       }
 
-      // التحقق من تطابق رقم الجوال
-      const registeredPhone = accountData.phone?.replace(/\D/g, '').slice(-9)
-      if (registeredPhone !== phone) {
-        toast.error('رقم الجوال غير مطابق للمسجل في النظام')
+      // التحقق من وجود رقم جوال
+      if (!accData.phone) {
+        toast.error('لا يوجد رقم جوال مسجل، الرجاء التواصل مع الإدارة')
         setIsLoading(false)
         return
       }
 
-      // ═══════════════════════════════════════════════════════════
-      // إنشاء OTP وإرساله
-      // ═══════════════════════════════════════════════════════════
-      const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+      // تنسيق رقم الجوال
+      let formattedPhone = accData.phone.replace(/\s/g, '')
+      if (formattedPhone.startsWith('05')) {
+        formattedPhone = '+966' + formattedPhone.substring(1)
+      } else if (formattedPhone.startsWith('5')) {
+        formattedPhone = '+966' + formattedPhone
+      } else if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+966' + formattedPhone
+      }
 
-      const { error: otpError } = await supabase
-        .from('otp_verifications')
-        .insert({
-          phone: fullPhone,
-          code: otpCode,
-          purpose: 'login',
-          expires_at: expiresAt,
-          national_id: licenseNumber,
-          status: 'pending',
-          channel: 'whatsapp',
-          attempts: 0,
-          max_attempts: 3
+      // ═══════════════════════════════════════════════════════════
+      // إرسال OTP عبر API
+      // ═══════════════════════════════════════════════════════════
+      const response = await fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: formattedPhone,
+          purpose: 'lawyer_login',
+          legal_arm_id: accData.legal_arm_id || null
         })
+      })
 
-      if (otpError) throw otpError
+      const result = await response.json()
 
-      console.log('🔐 رمز التحقق للمحامي:', otpCode)
-      toast.success(`تم إرسال رمز التحقق (للتجربة: ${otpCode})`)
-      
+      if (!response.ok) {
+        throw new Error(result.error || 'حدث خطأ في إرسال الرمز')
+      }
+
+      // حفظ البيانات والانتقال لخطوة OTP
+      setAccountData(accData)
+      setMaskedPhone(maskPhone(accData.phone))
       setStep('otp')
+      toast.success(`تم إرسال رمز التحقق إلى ${maskPhone(accData.phone)}`)
+
     } catch (error: any) {
-      console.error('Error:', error)
-      toast.error('حدث خطأ، حاول مرة أخرى')
+      console.error('Login error:', error)
+      toast.error(error.message || 'حدث خطأ، الرجاء المحاولة لاحقاً')
     } finally {
       setIsLoading(false)
     }
   }
 
   // ─────────────────────────────────────────────────────────────
-  // التحقق من OTP والتوجيه للوحة التحكم المناسبة
+  // التحقق من OTP وتسجيل الدخول
   // ─────────────────────────────────────────────────────────────
   
   const handleVerifyOTP = async () => {
     const otpCode = otp.join('')
     if (otpCode.length !== 6) {
-      toast.error('الرجاء إدخال رمز التحقق كاملاً')
+      toast.error('الرجاء إدخال رمز التحقق المكون من 6 أرقام')
+      return
+    }
+
+    if (!accountData) {
+      toast.error('حدث خطأ، الرجاء إعادة المحاولة')
+      setStep('input')
       return
     }
 
     setIsLoading(true)
-    const fullPhone = '+966' + phone
 
     try {
-      // التحقق من صحة OTP
-      const { data: otpData, error: otpError } = await supabase
-        .from('otp_verifications')
-        .select('*')
-        .eq('phone', fullPhone)
-        .eq('code', otpCode)
-        .eq('purpose', 'login')
-        .eq('status', 'pending')
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-
-      if (otpError || !otpData) {
-        toast.error('رمز التحقق غير صحيح أو منتهي الصلاحية')
-        setIsLoading(false)
-        return
+      // تنسيق رقم الجوال
+      let formattedPhone = accountData.phone.replace(/\s/g, '')
+      if (formattedPhone.startsWith('05')) {
+        formattedPhone = '+966' + formattedPhone.substring(1)
+      } else if (formattedPhone.startsWith('5')) {
+        formattedPhone = '+966' + formattedPhone
+      } else if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+966' + formattedPhone
       }
 
-      // تحديث حالة OTP إلى verified
-      await supabase
-        .from('otp_verifications')
-        .update({ status: 'verified', verified_at: new Date().toISOString() })
-        .eq('id', otpData.id)
+      // التحقق من OTP
+      const response = await fetch('/api/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: formattedPhone,
+          code: otpCode,
+          purpose: 'lawyer_login'
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'رمز التحقق غير صحيح')
+      }
 
       // ═══════════════════════════════════════════════════════════
-      // البحث عن المحامي في جدول lawyers
+      // تسجيل الدخول بنجاح - حفظ البيانات والتوجيه
       // ═══════════════════════════════════════════════════════════
-      const { data: lawyerData } = await supabase
-        .from('lawyers')
-        .select('id, legal_arm_id, lawyer_code, status, full_name')
-        .eq('license_number', licenseNumber.trim())
-        .single()
-
-      if (lawyerData) {
-        // ─────────────────────────────────────────────────────────
-        // حفظ معرف المحامي (مشترك لكل الأنواع)
-        // ─────────────────────────────────────────────────────────
-        localStorage.setItem('exolex_lawyer_id', lawyerData.id)
-        localStorage.setItem('exolex_lawyer_code', lawyerData.lawyer_code || '')
+      
+      if (accountData.type === 'lawyer') {
+        // محامي (ذراع أو مستقل)
+        localStorage.setItem('exolex_lawyer_id', accountData.id)
+        localStorage.setItem('exolex_user_type', 'lawyer')
         
-        // التحقق من نوع المحامي والتوجيه
-        if (lawyerData.legal_arm_id) {
-          // ═══════════════════════════════════════════════════════
-          // 🏢 محامي ذراع قانوني
-          // legal_arm_id موجود = يعمل ضمن الذراع القانوني
-          // ═══════════════════════════════════════════════════════
-          localStorage.setItem('exolex_legal_arm_id', lawyerData.legal_arm_id)
-          
-          toast.success('تم تسجيل الدخول بنجاح')
+        if (accountData.lawyer_code) {
+          localStorage.setItem('exolex_lawyer_code', accountData.lawyer_code)
+        }
+
+        if (accountData.legal_arm_id) {
+          // محامي ذراع قانوني
+          localStorage.setItem('exolex_legal_arm_id', accountData.legal_arm_id)
+          toast.success(`مرحباً ${accountData.full_name}`)
           router.push('/legal-arm-lawyer/dashboard')
         } else {
-          // ═══════════════════════════════════════════════════════
-          // 👤 محامي مستقل
-          // legal_arm_id = NULL = يعمل بشكل مستقل
-          // ═══════════════════════════════════════════════════════
-          toast.success('تم تسجيل الدخول بنجاح')
+          // محامي مستقل
+          toast.success(`مرحباً ${accountData.full_name}`)
           router.push('/independent/dashboard')
         }
-        return
-      }
-
-      // ═══════════════════════════════════════════════════════════
-      // البحث في جدول partner_employees
-      // (محامي يعمل لدى شريك قانوني)
-      // ═══════════════════════════════════════════════════════════
-      const { data: partnerEmployeeData } = await supabase
-        .from('partner_employees')
-        .select('id, partner_id, employee_code, status, full_name')
-        .eq('license_number', licenseNumber.trim())
-        .single()
-
-      if (partnerEmployeeData) {
-        // ═══════════════════════════════════════════════════════
-        // 🏛️ محامي شريك (موظف لديه رخصة)
-        // ═══════════════════════════════════════════════════════
-        localStorage.setItem('exolex_employee_id', partnerEmployeeData.id)
-        localStorage.setItem('exolex_employee_code', partnerEmployeeData.employee_code || '')
-        localStorage.setItem('exolex_partner_id', partnerEmployeeData.partner_id)
+      } else {
+        // محامي شريك
+        localStorage.setItem('exolex_employee_id', accountData.id)
+        localStorage.setItem('exolex_user_type', 'partner_employee')
         
-        toast.success('تم تسجيل الدخول بنجاح')
+        if (accountData.employee_code) {
+          localStorage.setItem('exolex_employee_code', accountData.employee_code)
+        }
+        if (accountData.partner_id) {
+          localStorage.setItem('exolex_partner_id', accountData.partner_id)
+        }
+        
+        toast.success(`مرحباً ${accountData.full_name}`)
         router.push('/partner-employee/dashboard')
-        return
       }
-
-      // لم يُعثر على الحساب في أي جدول
-      toast.error('حدث خطأ في تحديد نوع الحساب')
 
     } catch (error: any) {
-      console.error('Error:', error)
-      toast.error('حدث خطأ، حاول مرة أخرى')
+      console.error('OTP verification error:', error)
+      toast.error(error.message || 'حدث خطأ في التحقق')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // إعادة إرسال OTP
+  // ─────────────────────────────────────────────────────────────
+  
+  const handleResendOTP = async () => {
+    if (!accountData) return
+    
+    setIsLoading(true)
+    try {
+      let formattedPhone = accountData.phone.replace(/\s/g, '')
+      if (formattedPhone.startsWith('05')) {
+        formattedPhone = '+966' + formattedPhone.substring(1)
+      } else if (formattedPhone.startsWith('5')) {
+        formattedPhone = '+966' + formattedPhone
+      } else if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+966' + formattedPhone
+      }
+
+      const response = await fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: formattedPhone,
+          purpose: 'lawyer_login',
+          legal_arm_id: accountData.legal_arm_id || null
+        })
+      })
+
+      if (response.ok) {
+        toast.success('تم إعادة إرسال رمز التحقق')
+        setOtp(['', '', '', '', '', ''])
+      } else {
+        throw new Error('فشل إعادة الإرسال')
+      }
+    } catch (error) {
+      toast.error('حدث خطأ في إعادة الإرسال')
     } finally {
       setIsLoading(false)
     }
@@ -279,13 +345,13 @@ export default function LawyerLoginPage() {
   // ─────────────────────────────────────────────────────────────
   
   const handleOtpChange = (index: number, value: string) => {
-    if (value.length > 1) return
-    if (value && !/^\d$/.test(value)) return
-
+    if (!/^\d*$/.test(value)) return
+    
     const newOtp = [...otp]
-    newOtp[index] = value
+    newOtp[index] = value.slice(-1)
     setOtp(newOtp)
-
+    
+    // الانتقال للخانة التالية
     if (value && index < 5) {
       const nextInput = document.getElementById(`otp-${index + 1}`)
       nextInput?.focus()
@@ -300,183 +366,142 @@ export default function LawyerLoginPage() {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // واجهة المستخدم
+  // العرض
   // ─────────────────────────────────────────────────────────────
-  
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 flex items-center justify-center p-4" dir="rtl">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
         
-        {/* البطاقة الرئيسية */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
-          
-          {/* الشعار */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl mb-4 shadow-lg">
-              <span className="text-4xl">⚖️</span>
-            </div>
-            <h1 className="text-3xl font-bold text-slate-800">ExoLex</h1>
-            <p className="text-slate-500 mt-1">بوابة المحامين</p>
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <span className="text-4xl">⚖️</span>
           </div>
+          <h1 className="text-2xl font-bold text-slate-800">بوابة المحامين</h1>
+          <p className="text-slate-500 mt-2">تسجيل الدخول برقم الهوية</p>
+        </div>
 
-          {step === 'input' ? (
-            <>
-              <h2 className="text-xl font-semibold text-center text-slate-700 mb-6">
-                تسجيل الدخول
-              </h2>
+        {/* ═══════════════════════════════════════════════════════════
+            خطوة 1: إدخال رقم الهوية
+        ═══════════════════════════════════════════════════════════ */}
+        {step === 'input' && (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                رقم الهوية / الإقامة
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={10}
+                value={nationalId}
+                onChange={(e) => setNationalId(e.target.value.replace(/\D/g, ''))}
+                placeholder="أدخل رقم الهوية (10 أرقام)"
+                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none text-center text-lg tracking-wider"
+                dir="ltr"
+              />
+              <p className="text-xs text-slate-400 mt-2 text-center">
+                سيتم إرسال رمز التحقق للجوال المسجل في النظام
+              </p>
+            </div>
 
-              {/* رقم الرخصة */}
-              <div className="mb-5">
-                <label className="block text-sm font-medium text-slate-600 mb-2">
-                  رقم الرخصة القانونية <span className="text-red-500">*</span>
-                </label>
+            <button
+              onClick={handleSendOTP}
+              disabled={isLoading || nationalId.length !== 10}
+              className="w-full py-4 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  جاري البحث...
+                </>
+              ) : (
+                'متابعة'
+              )}
+            </button>
+
+            <div className="text-center pt-4 border-t border-slate-100">
+              <p className="text-sm text-slate-500">
+                مدير ذراع قانوني؟{' '}
+                <Link href="/auth/legal-arm-login" className="text-purple-600 hover:underline font-medium">
+                  دخول المدراء
+                </Link>
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════
+            خطوة 2: إدخال OTP
+        ═══════════════════════════════════════════════════════════ */}
+        {step === 'otp' && (
+          <div className="space-y-6">
+            <div className="text-center">
+              <p className="text-slate-600 mb-2">
+                تم إرسال رمز التحقق إلى
+              </p>
+              <p className="font-bold text-slate-800 text-lg" dir="ltr">
+                {maskedPhone}
+              </p>
+            </div>
+
+            {/* خانات OTP */}
+            <div className="flex justify-center gap-2" dir="ltr">
+              {otp.map((digit, index) => (
                 <input
+                  key={index}
+                  id={`otp-${index}`}
                   type="text"
-                  value={licenseNumber}
-                  onChange={(e) => setLicenseNumber(e.target.value)}
-                  placeholder="أدخل رقم رخصتك"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-all text-right"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleOtpChange(index, e.target.value)}
+                  onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                  className="w-12 h-14 text-center text-xl font-bold border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none"
                 />
-              </div>
+              ))}
+            </div>
 
-              {/* رقم الجوال */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-slate-600 mb-2">
-                  رقم الجوال <span className="text-red-500">*</span>
-                </label>
-                <div className="flex gap-2">
-                  <div className="bg-slate-100 border border-slate-300 rounded-xl px-4 py-3 text-slate-500 font-medium">
-                    966+
-                  </div>
-                  <input
-                    type="text"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 9))}
-                    placeholder="5xxxxxxxx"
-                    className="flex-1 px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-all"
-                    style={{ direction: 'ltr' }}
-                    maxLength={9}
-                  />
-                </div>
-              </div>
+            <button
+              onClick={handleVerifyOTP}
+              disabled={isLoading || otp.join('').length !== 6}
+              className="w-full py-4 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  جاري التحقق...
+                </>
+              ) : (
+                'تسجيل الدخول'
+              )}
+            </button>
 
-              {/* زر الإرسال */}
+            <div className="flex items-center justify-between text-sm">
               <button
-                onClick={handleSendOTP}
+                onClick={handleResendOTP}
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white py-3.5 px-6 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-purple-600 hover:underline"
               >
-                {isLoading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    جاري التحقق...
-                  </span>
-                ) : (
-                  'إرسال رمز التحقق'
-                )}
+                إعادة إرسال الرمز
               </button>
-            </>
-          ) : (
-            <>
-              {/* شاشة OTP */}
-              <h2 className="text-xl font-semibold text-center text-slate-700 mb-2">
-                التحقق من الرمز
-              </h2>
-              <p className="text-slate-500 text-center mb-6 text-sm">
-                تم إرسال رمز التحقق عبر الواتساب إلى<br />
-                <span className="font-semibold text-slate-700" style={{ direction: 'ltr', display: 'inline-block' }}>
-                  +966 {phone}
-                </span>
-              </p>
-
-              {/* حقول OTP */}
-              <div className="flex justify-center gap-2 mb-4" dir="ltr">
-                {otp.map((digit, index) => (
-                  <input
-                    key={index}
-                    id={`otp-${index}`}
-                    type="text"
-                    inputMode="numeric"
-                    value={digit}
-                    onChange={(e) => handleOtpChange(index, e.target.value)}
-                    onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                    className="w-12 h-14 text-center text-xl font-bold border-2 border-slate-300 rounded-xl focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition-all"
-                    maxLength={1}
-                  />
-                ))}
-              </div>
-
-              <p className="text-center text-sm text-slate-400 mb-6">
-                ⏱️ الرمز صالح لمدة 5 دقائق
-              </p>
-
-              {/* زر التحقق */}
-              <button
-                onClick={handleVerifyOTP}
-                disabled={isLoading || otp.join('').length !== 6}
-                className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white py-3.5 px-6 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
-              >
-                {isLoading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    جاري التحقق...
-                  </span>
-                ) : (
-                  'تحقق ودخول'
-                )}
-              </button>
-
-              {/* إعادة الإرسال */}
-              <button
-                onClick={() => {
-                  setOtp(['', '', '', '', '', ''])
-                  handleSendOTP()
-                }}
-                className="w-full text-amber-600 hover:text-amber-700 text-sm font-medium"
-              >
-                لم يصلك الرمز؟ إعادة الإرسال
-              </button>
-
-              {/* رجوع */}
               <button
                 onClick={() => {
                   setStep('input')
                   setOtp(['', '', '', '', '', ''])
                 }}
-                className="w-full mt-4 text-slate-500 hover:text-slate-700 text-sm"
+                className="text-slate-500 hover:text-slate-700"
               >
-                ← رجوع
+                تغيير رقم الهوية
               </button>
-            </>
-          )}
-        </div>
-
-        {/* قسم التسجيل */}
-        {step === 'input' && (
-          <div className="mt-6 bg-slate-800/50 backdrop-blur rounded-2xl p-6 text-center">
-            <p className="text-slate-300 font-medium mb-4">📝 ليس لديك حساب؟</p>
-            
-            <p className="text-slate-400 text-sm mb-4 leading-relaxed">
-              إذا كنت محامي مستقل أو لديك مكتب وتعمل لوحدك ولا ترغب بإضافة موظفين
-            </p>
-            
-            <Link 
-              href="/independent/register"
-              className="inline-block w-full bg-white/10 hover:bg-white/20 text-white py-3 px-6 rounded-xl font-medium transition-all duration-200 mb-4"
-            >
-              سجّل كمحامي مستقل
-            </Link>
-            
-            <p className="text-slate-400 text-sm mb-4 leading-relaxed">
-              في حال كان لديك موظفين ترغب بإضافتهم
-            </p>
-            
-            <Link 
-              href="/partner/register"
-              className="inline-block w-full border border-slate-500 hover:border-slate-400 text-slate-300 hover:text-white py-3 px-6 rounded-xl font-medium transition-all duration-200"
-            >
-              سجّل كشريك قانوني
-            </Link>
+            </div>
           </div>
         )}
 

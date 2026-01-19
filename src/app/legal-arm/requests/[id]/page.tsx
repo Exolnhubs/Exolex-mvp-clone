@@ -783,10 +783,10 @@ export default function LegalArmRequestDetailsPage() {
                     <div>
                       <h4 className="font-medium text-slate-800 mb-2">المرفقات من المشترك</h4>
                       <div className="flex flex-wrap gap-2">
-                        {request.attachments.map((file: any, idx: number) => (
+                      {request.attachments.map((file: any, idx: number) => (
                           
-                            key={idx}
-                            href={file.url}
+                          key={idx}
+                          href={file.url}
                             target="_blank"
                             className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
                           >
@@ -910,8 +910,8 @@ export default function LegalArmRequestDetailsPage() {
                             <div className="mt-2 flex flex-wrap gap-2">
                               {msg.attachments.map((file: any, idx: number) => (
                                 
-                                  key={idx}
-                                  href={file.file_url}
+                                key={idx}
+                                href={file.file_url}
                                   target="_blank"
                                   className="flex items-center gap-1 px-2 py-1 bg-white border rounded text-sm text-emerald-600 hover:bg-emerald-50"
                                 >

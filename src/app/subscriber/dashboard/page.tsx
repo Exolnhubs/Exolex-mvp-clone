@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 // 📝 التحديث: فصل نموذج الطلب في RequestFormModal منفصل
 // 📁 المسار: src/app/subscriber/dashboard/page.tsx
 // ═══════════════════════════════════════════════════════════════════════════════
-
+import { distributePackageRequest } from '@/lib/distribution-utils'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -295,7 +295,14 @@ export default function DashboardPage() {
         .single()
 
       if (error) throw error
+// 🎯 التوزيع التلقائي على محامي الذراع
+const categoryCode = categories.find(c => c.id === context.category_id)?.code
+const distributionResult = await distributePackageRequest({
+  request_id: newRequest.id,
+  category_code: categoryCode
+})
 
+console.log('Distribution result:', distributionResult)
       // خصم من الرصيد فقط إذا ليست حالة طارئة
       if (!isEmergency) {
         const updateField = context.type === 'consultation' ? 'consultations_remaining' : 'cases_remaining'
