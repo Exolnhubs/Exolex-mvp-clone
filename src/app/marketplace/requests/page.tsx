@@ -1,9 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Clock, FileText, CheckCircle, Send, AlertCircle, Search, RefreshCw, Eye, X, Download, Coins, Flag, FileIcon, User } from 'lucide-react'
+import { Clock, FileText, CheckCircle, Send, AlertCircle, Search, RefreshCw, Eye, X, Download, Coins, Flag, FileIcon, User, ArrowRight } from 'lucide-react'
 import QuoteFormModal, { QuoteFormData } from '@/components/QuoteFormModal'
+
+// ═══════════════════════════════════════════════════════════════
+// 📌 منصة الطلبات الموحدة - الخدمات الإضافية
+// 📅 تاريخ التحديث: 21 يناير 2026
+// 🎯 التحديث: إضافة زر العودة الذكي للوحة تحكم المحامي
+// ═══════════════════════════════════════════════════════════════
 
 interface ServiceRequest {
   id: string
@@ -23,6 +30,7 @@ interface ServiceRequest {
 }
 
 export default function MarketplaceRequestsPage() {
+  const router = useRouter()
   const [availableRequests, setAvailableRequests] = useState<ServiceRequest[]>([])
   const [acceptedRequests, setAcceptedRequests] = useState<ServiceRequest[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,13 +40,53 @@ export default function MarketplaceRequestsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [lawyerId, setLawyerId] = useState<string | null>(null)
   
+  // ═══════════════════════════════════════════════════════════════
+  // 🔙 زر العودة الذكي - يحدد مسار العودة حسب نوع المحامي
+  // ═══════════════════════════════════════════════════════════════
+  const [returnPath, setReturnPath] = useState<string | null>(null)
+  const [lawyerType, setLawyerType] = useState<string>('')
+  
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [showQuoteModal, setShowQuoteModal] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(null)
 
+  // ═══════════════════════════════════════════════════════════════
+  // جلب نوع المحامي وتحديد مسار العودة
+  // ═══════════════════════════════════════════════════════════════
   useEffect(() => {
-    const id = localStorage.getItem('exolex_lawyer_id')
-    if (id) setLawyerId(id)
+    const checkLawyerAndSetReturnPath = async () => {
+      const id = localStorage.getItem('exolex_lawyer_id')
+      if (id) {
+        setLawyerId(id)
+        
+        // جلب نوع المحامي من قاعدة البيانات
+        const { data: lawyer } = await supabase
+          .from('lawyers')
+          .select('lawyer_type')
+          .eq('id', id)
+          .single()
+        
+        if (lawyer) {
+          setLawyerType(lawyer.lawyer_type)
+          
+          // تحديد مسار العودة حسب نوع المحامي
+          switch (lawyer.lawyer_type) {
+            case 'legal_arm':
+              setReturnPath('/legal-arm-lawyer/dashboard')
+              break
+            case 'independent':
+              setReturnPath('/independent/dashboard')
+              break
+            case 'partner':
+              setReturnPath('/partner-lawyer/dashboard')
+              break
+            default:
+              setReturnPath(null)
+          }
+        }
+      }
+    }
+    checkLawyerAndSetReturnPath()
   }, [])
 
   const fetchRequests = async () => {
@@ -130,7 +178,7 @@ export default function MarketplaceRequestsPage() {
           request_id: selectedRequest.id,
           lawyer_id: currentLawyerId,
           quote_number: quoteNumber,
-          quote_type: formData.payment_type, // 'single' أو 'multiple'
+          quote_type: formData.payment_type,
           service_description: formData.service_description,
           price: formData.total_price,
           platform_fee_percent: 30,
@@ -229,6 +277,18 @@ export default function MarketplaceRequestsPage() {
     return { bg: 'bg-gray-100', color: 'text-gray-600' }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // الحصول على اسم البوابة للعرض
+  // ═══════════════════════════════════════════════════════════════
+  const getPortalName = () => {
+    switch (lawyerType) {
+      case 'legal_arm': return 'بوابة محامي الذراع'
+      case 'independent': return 'بوابة المحامي المستقل'
+      case 'partner': return 'بوابة محامي الشريك'
+      default: return 'لوحة التحكم'
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -256,9 +316,26 @@ export default function MarketplaceRequestsPage() {
             <h1 className="text-2xl font-bold mb-2">🏪 منصة الطلبات الموحدة</h1>
             <p className="text-blue-100">جميع الطلبات المتاحة للمحامين - الخدمات الإضافية</p>
           </div>
-          <button onClick={handleRefresh} disabled={refreshing} className="p-3 bg-white/20 rounded-xl hover:bg-white/30">
-            <RefreshCw className={`w-6 h-6 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
+          
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* 🔙 أزرار التحكم: التحديث + العودة */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          <div className="flex items-center gap-3">
+            <button onClick={handleRefresh} disabled={refreshing} className="p-3 bg-white/20 rounded-xl hover:bg-white/30 transition-colors" title="تحديث">
+              <RefreshCw className={`w-6 h-6 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+            
+            {/* زر العودة - يظهر فقط إذا كان المحامي مسجل دخول */}
+            {returnPath && (
+              <button 
+                onClick={() => router.push(returnPath)} 
+                className="flex items-center gap-2 px-4 py-3 bg-white/20 rounded-xl hover:bg-white/30 transition-colors"
+              >
+                <ArrowRight className="w-5 h-5" />
+                <span className="font-medium">العودة إلى {getPortalName()}</span>
+              </button>
+            )}
+          </div>
         </div>
         
         <div className="grid grid-cols-4 gap-4 mt-6">

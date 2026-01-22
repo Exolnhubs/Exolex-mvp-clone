@@ -415,7 +415,37 @@ export default function UnifiedCalendar({
           allEvents = [...allEvents, ...newEvents]
         }
       }
-      
+      // 4. مواعيد من request_appointments (المضافة من تبويب المهام)
+      if (userType === 'lawyer') {
+        const { data: appointmentEvents, error: aptError } = await supabase
+          .from('request_appointments')
+          .select('*')
+          .eq('created_by', userId)
+          .gte('start_datetime', startOfMonth.toISOString())
+          .lte('start_datetime', endOfMonth.toISOString())
+
+        if (!aptError && appointmentEvents) {
+          // تحويل إلى صيغة calendar_events
+          const convertedEvents = appointmentEvents.map(apt => ({
+            id: `apt_${apt.id}`,
+            owner_type: 'lawyer',
+            owner_id: userId,
+            title: apt.title,
+            description: apt.description,
+            event_type: apt.appointment_type || 'client_meeting',
+            start_datetime: apt.start_datetime,
+            end_datetime: apt.end_datetime,
+            location: apt.location,
+            location_type: apt.location_type,
+            court_name: apt.court_name,
+            request_id: apt.request_id,
+            notify_client: apt.notify_client,
+            status: apt.status,
+            is_from_appointments: true
+          }))
+          allEvents = [...allEvents, ...convertedEvents]
+        }
+      }
       // ترتيب حسب التاريخ
       allEvents.sort((a, b) => new Date(a.start_datetime).getTime() - new Date(b.start_datetime).getTime())
       

@@ -2295,13 +2295,14 @@ const handleRejectPoa = async () => {
                 )}
 
                 {/* زر فتح قضية - يظهر فقط بعد قبول الوكالة */}
-                {poaDocument.status === 'approved' && (
-                  <button 
-                  onClick={() => { setShowPoaModal(false); router.push(`/independent/cases/new?request_id=${requestId}`) }}                    className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold flex items-center justify-center gap-2"
-                  >
-                    <span>⚖️</span> فتح قضية جديدة
-                  </button>
-                )}
+{poaDocument.status === 'approved' && (
+  <button 
+    onClick={() => { setShowPoaModal(false); router.push(`/independent/cases/new?request_id=${requestId}`) }}
+    className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold flex items-center justify-center gap-2"
+  >
+    <span>⚖️</span> فتح قضية جديدة
+  </button>
+)}
 
                 <button 
                   onClick={() => setShowPoaModal(false)}

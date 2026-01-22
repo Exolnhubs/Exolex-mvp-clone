@@ -4,491 +4,503 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import toast from 'react-hot-toast'
+import { RefreshCw } from 'lucide-react'
 
 // ═══════════════════════════════════════════════════════════════
-// 📌 لوحة تحكم محامي الذراع القانوني
-// 📅 تاريخ التحديث: 12 يناير 2026
-// 🎯 الغرض: عرض الإحصائيات + طلبات المنصة الجديدة (حسب التصميم)
+// 📊 لوحة تحكم محامي الذراع القانوني
+// 📅 تاريخ التحديث: 21 يناير 2026
+// 🎯 التحديث: جلب التقييمات من request_reviews مباشرة
 // ═══════════════════════════════════════════════════════════════
 
-interface PlatformRequest {
-  id: string
-  ticket_number: string
-  title: string
-  base_price: number | null
-  created_at: string
-  deadline?: string
-}
-
-interface Stats {
-  newRequests: number
-  inProgress: number
-  overdueSLA: number
-  activeCases: number
-  rating: number
-  ratingCount: number
-}
-
-export default function LegalArmLawyerDashboard() {
+export default function ArmLawyerDashboardPage() {
   const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [lawyerId, setLawyerId] = useState<string | null>(null)
-  const [lawyerName, setLawyerName] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [lawyer, setLawyer] = useState<any>(null)
+  const [legalArm, setLegalArm] = useState<any>(null)
   
-  const [platformRequests, setPlatformRequests] = useState<PlatformRequest[]>([])
-  const [stats, setStats] = useState<Stats>({
-    newRequests: 0,
-    inProgress: 0,
-    overdueSLA: 0,
-    activeCases: 0,
+  const [stats, setStats] = useState({
+    earnings: 0,
     rating: 0,
-    ratingCount: 0
+    ratingsCount: 0,
+    upcomingSessions: 0,
+    activeCases: 0,
+    completed: 0,
+    delayed: 0,
+    myTasks: 0
   })
   
+  // العروض والطلبات
+  const [pendingQuotes, setPendingQuotes] = useState<any[]>([])
+  const [newRequests, setNewRequests] = useState<any[]>([])
+  const [packageRequests, setPackageRequests] = useState<any[]>([])
+  const [platformRequests, setPlatformRequests] = useState<any[]>([])
+  const [activeCases, setActiveCases] = useState<any[]>([])
   const [upcomingSessions, setUpcomingSessions] = useState<any[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
+  
+  const [activeTab, setActiveTab] = useState<'pending' | 'new'>('new')
 
-  useEffect(() => {
-    const id = localStorage.getItem('exolex_lawyer_id')
-    if (!id) {
-      router.push('/auth/lawyer-login')
-      return
-    }
-    setLawyerId(id)
-    loadAllData(id)
-    
-    // Real-time subscription
-    const channel = supabase
-      .channel('dashboard-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'service_requests' }, () => {
-        loadPlatformRequests()
+  useEffect(() => { loadDashboardData() }, [])
+
+  const loadDashboardData = async () => {
+    try {
+      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      if (!lawyerId) { router.push('/auth/lawyer-login'); return }
+
+      // بيانات المحامي
+      const { data: lawyerData } = await supabase
+        .from('lawyers')
+        .select('*, legal_arms(id, name_ar, logo_url)')
+        .eq('id', lawyerId)
+        .single()
+      
+      if (lawyerData) {
+        setLawyer(lawyerData)
+        if (lawyerData.legal_arms) setLegalArm(lawyerData.legal_arms)
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      // 🔥 جلب التقييمات الفعلية من request_reviews
+      // ═══════════════════════════════════════════════════════════════
+      const { data: ratingsData } = await supabase
+        .from('request_reviews')
+        .select('lawyer_overall_rating, lawyer_rating')
+        .eq('lawyer_id', lawyerId)
+
+      let avgRating = 0
+      let ratingsCount = 0
+      if (ratingsData && ratingsData.length > 0) {
+        ratingsCount = ratingsData.length
+        const totalRating = ratingsData.reduce((sum, r) => {
+          return sum + (r.lawyer_overall_rating || r.lawyer_rating || 0)
+        }, 0)
+        avgRating = Math.round((totalRating / ratingsCount) * 10) / 10
+      }
+
+      // الإحصائيات
+      const { count: tasksCount } = await supabase
+        .from('service_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('assigned_lawyer_id', lawyerId)
+        .in('status', ['assigned', 'in_progress'])
+
+      const { count: completedCount } = await supabase
+        .from('service_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('assigned_lawyer_id', lawyerId)
+        .eq('status', 'completed')
+
+      const { data: casesData } = await supabase
+        .from('case_management')
+        .select('*')
+        .eq('lawyer_id', lawyerId)
+        .eq('status', 'active')
+
+      const { count: sessionsCount } = await supabase
+        .from('calendar_events')
+        .select('*', { count: 'exact', head: true })
+        .eq('owner_id', lawyerId)
+        .eq('event_type', 'court_session')
+        .gte('start_datetime', new Date().toISOString())
+
+      // عروض بانتظار الترسية (العروض المقدمة من المحامي)
+      const { data: quotesData } = await supabase
+        .from('service_quotes')
+        .select('*, service_requests(id, ticket_number, title)')
+        .eq('lawyer_id', lawyerId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(5)
+      setPendingQuotes(quotesData || [])
+
+      // طلبات جديدة (متاحة للقبول أو تقديم عرض)
+      const { data: newReqData } = await supabase
+        .from('service_requests')
+        .select('id, ticket_number, title, base_price, created_at, priority')
+        .neq('source', 'package')
+        .is('assigned_lawyer_id', null)
+        .in('status', ['pending_assignment', 'pending_quotes'])
+        .order('created_at', { ascending: false })
+        .limit(5)
+      setNewRequests(newReqData || [])
+
+      // طلبات الباقات (المسندة للمحامي)
+      const { data: pkgData } = await supabase
+        .from('service_requests')
+        .select('id, ticket_number, title, status, sla_deadline, created_at, categories(name_ar)')
+        .eq('assigned_lawyer_id', lawyerId)
+        .eq('source', 'package')
+        .in('status', ['assigned', 'in_progress'])
+        .order('sla_deadline', { ascending: true })
+        .limit(5)
+      setPackageRequests(pkgData || [])
+
+      // طلبات المنصة الموحدة (الخدمات الإضافية المتاحة)
+      const { data: platformData } = await supabase
+        .from('service_requests')
+        .select('id, ticket_number, title, base_price, created_at')
+        .neq('source', 'package')
+        .is('assigned_lawyer_id', null)
+        .in('status', ['pending_assignment', 'pending_quotes'])
+        .order('created_at', { ascending: false })
+        .limit(5)
+      setPlatformRequests(platformData || [])
+
+      // القضايا النشطة
+      const { data: casesListData } = await supabase
+        .from('case_management')
+        .select('id, case_number, title, status, next_session_date, members(full_name)')
+        .eq('lawyer_id', lawyerId)
+        .eq('status', 'active')
+        .order('next_session_date', { ascending: true })
+        .limit(3)
+      setActiveCases(casesListData || [])
+
+      // الجلسات القادمة
+      const { data: sessionsData } = await supabase
+        .from('calendar_events')
+        .select('*')
+        .eq('owner_id', lawyerId)
+        .gte('start_datetime', new Date().toISOString())
+        .order('start_datetime', { ascending: true })
+        .limit(3)
+      setUpcomingSessions(sessionsData || [])
+
+      // الإشعارات
+      const { data: notifData } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', lawyerId)
+        .eq('is_read', false)
+        .order('created_at', { ascending: false })
+        .limit(5)
+      setNotifications(notifData || [])
+
+      setStats({
+        earnings: lawyerData?.total_earnings || 0,
+        rating: avgRating,
+        ratingsCount: ratingsCount,
+        upcomingSessions: sessionsCount || 0,
+        activeCases: casesData?.length || 0,
+        completed: completedCount || 0,
+        delayed: casesData?.filter((c: any) => c.is_delayed)?.length || 0,
+        myTasks: tasksCount || 0
       })
-      .subscribe()
-    
-    return () => { supabase.removeChannel(channel) }
-  }, [])
 
-  const loadAllData = async (id: string) => {
-    setLoading(true)
-    await Promise.all([
-      loadLawyerInfo(id),
-      loadPlatformRequests(),
-      loadStats(id),
-      loadUpcomingSessions(id),
-      loadNotifications(id)
-    ])
-    setLoading(false)
-  }
-
-  const loadLawyerInfo = async (id: string) => {
-    const { data } = await supabase.from('lawyers').select('full_name').eq('id', id).single()
-    if (data) setLawyerName(data.full_name)
-  }
-
-  const loadPlatformRequests = async () => {
-    const { data } = await supabase
-      .from('service_requests')
-      .select('id, ticket_number, title, base_price, created_at, sla_deadline')
-      .in('status', ['pending_assignment', 'pending_quotes', 'assigned_to_arm'])
-      .order('created_at', { ascending: false })
-      .limit(5)
-    
-    setPlatformRequests((data || []).map(r => ({
-      id: r.id,
-      ticket_number: r.ticket_number,
-      title: r.title,
-      base_price: r.base_price,
-      created_at: r.created_at,
-      deadline: r.sla_deadline
-    })))
-  }
-
-  const loadStats = async (id: string) => {
-    // إحصائيات الطلبات
-    const { count: newCount } = await supabase
-      .from('service_requests')
-      .select('*', { count: 'exact', head: true })
-      .in('status', ['pending_assignment', 'pending_quotes'])
-    
-    const { count: progressCount } = await supabase
-      .from('service_requests')
-      .select('*', { count: 'exact', head: true })
-      .eq('assigned_lawyer_id', id)
-      .eq('status', 'in_progress')
-    
-    const { count: overdueCount } = await supabase
-      .from('service_requests')
-      .select('*', { count: 'exact', head: true })
-      .eq('assigned_lawyer_id', id)
-      .lt('sla_deadline', new Date().toISOString())
-      .not('status', 'in', '("completed","cancelled")')
-    
-    const { count: casesCount } = await supabase
-      .from('case_management')
-      .select('*', { count: 'exact', head: true })
-      .eq('assigned_lawyer_id', id)
-      .in('status', ['active', 'in_progress'])
-    
-    // التقييم
-    const { data: lawyer } = await supabase
-      .from('lawyers')
-      .select('avg_rating, rating_count')
-      .eq('id', id)
-      .single()
-    
-    setStats({
-      newRequests: newCount || 0,
-      inProgress: progressCount || 0,
-      overdueSLA: overdueCount || 0,
-      activeCases: casesCount || 0,
-      rating: lawyer?.avg_rating || 0,
-      ratingCount: lawyer?.rating_count || 0
-    })
-  }
-
-  const loadUpcomingSessions = async (id: string) => {
-    const { data } = await supabase
-      .from('case_sessions')
-      .select('id, session_date, session_time, case_id, notes')
-      .eq('lawyer_id', id)
-      .gte('session_date', new Date().toISOString().split('T')[0])
-      .order('session_date', { ascending: true })
-      .limit(3)
-    
-    setUpcomingSessions(data || [])
-  }
-
-  const loadNotifications = async (id: string) => {
-    const { data } = await supabase
-      .from('notifications')
-      .select('id, title, message, type, created_at, is_read')
-      .eq('recipient_id', id)
-      .order('created_at', { ascending: false })
-      .limit(3)
-    
-    setNotifications(data || [])
-  }
-
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    await loadPlatformRequests()
-    setRefreshing(false)
+    } catch (error) { 
+      console.error('Error:', error)
+      toast.error('حدث خطأ في تحميل البيانات')
+    } finally { 
+      setIsLoading(false) 
+    }
   }
 
   const getTimeAgo = (date: string) => {
     const diff = Date.now() - new Date(date).getTime()
     const minutes = Math.floor(diff / 60000)
     const hours = Math.floor(minutes / 60)
+    const days = Math.floor(hours / 24)
+    if (days > 0) return `منذ ${days} يوم`
     if (hours > 0) return `منذ ${hours} ساعة`
-    if (minutes > 0) return `منذ ${minutes} دقيقة`
-    return 'الآن'
+    return `منذ ${minutes} دقيقة`
   }
 
-  const getDeadlineText = (deadline?: string) => {
-    if (!deadline) return null
-    const now = new Date()
-    const deadlineDate = new Date(deadline)
-    const diffDays = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-    if (diffDays < 0) return { text: 'منتهي', color: 'text-red-600' }
-    if (diffDays === 0) return { text: 'اليوم', color: 'text-red-600' }
-    if (diffDays === 1) return { text: 'غداً', color: 'text-orange-600' }
-    return { text: `متبقي: ${diffDays} أيام`, color: 'text-orange-600' }
+  const getSLAStatus = (deadline: string) => {
+    if (!deadline) return { text: '-', color: 'gray' }
+    const hoursLeft = (new Date(deadline).getTime() - Date.now()) / (1000 * 60 * 60)
+    if (hoursLeft < 0) return { text: 'متأخر!', color: 'red' }
+    if (hoursLeft < 4) return { text: `${Math.floor(hoursLeft)}س`, color: 'red' }
+    if (hoursLeft < 12) return { text: `${Math.floor(hoursLeft)}س`, color: 'yellow' }
+    return { text: `${Math.floor(hoursLeft)}س`, color: 'green' }
   }
 
-  if (loading) {
+  // ═══════════════════════════════════════════════════════════════
+  // دالة عرض النجوم
+  // ═══════════════════════════════════════════════════════════════
+  const renderStars = (rating: number) => {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="flex items-center gap-0.5">
+        {[1, 2, 3, 4, 5].map(star => (
+          <span key={star} className={`text-sm ${star <= Math.round(rating) ? 'text-amber-400' : 'text-slate-300'}`}>★</span>
+        ))}
       </div>
     )
   }
 
+  if (isLoading) return (
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+      <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+    </div>
+  )
+
   return (
-    <div className="space-y-8">
-      
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* قسم طلبات المنصة الجديدة */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <section className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full">
-              {platformRequests.length}
-            </span>
-            <h3 className="text-xl font-bold text-gray-800">طلبات المنصة الجديدة</h3>
+    <div className="min-h-screen bg-slate-100 p-6" dir="rtl">
+      <div className="max-w-7xl mx-auto space-y-6">
+
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">الرئيسية</h1>
+            <p className="text-slate-500">مرحباً، {lawyer?.full_name}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-              <span className="text-xs text-gray-600">تحديث تلقائي</span>
-            </div>
-            <button 
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-all"
-            >
-              <span className={`text-gray-600 ${refreshing ? 'animate-spin' : ''}`}>🔄</span>
-            </button>
+          <button 
+            onClick={() => { setIsLoading(true); loadDashboardData() }}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+          >
+            <RefreshCw className="w-4 h-4" />
+            تحديث
+          </button>
+        </div>
+
+        {/* الإحصائيات */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+          <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+            <div className="text-2xl mb-1">💰</div>
+            <div className="text-xl font-bold text-emerald-600">{stats.earnings.toLocaleString()}</div>
+            <p className="text-xs text-slate-500">أرباحي (ر.س)</p>
+          </div>
+          
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* 🔥 بطاقة التقييم المحدثة - تعرض المعدل الفعلي مع النجوم */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          <Link href="/legal-arm-lawyer/ratings" className="bg-white rounded-xl p-4 shadow-sm text-center hover:shadow-md hover:border-amber-300 border-2 border-transparent transition-all cursor-pointer">
+            <div className="text-2xl mb-1">⭐</div>
+            <div className="text-xl font-bold text-yellow-600">{stats.rating > 0 ? stats.rating.toFixed(1) : '---'}</div>
+            {stats.ratingsCount > 0 && (
+              <div className="flex justify-center mt-1">
+                {renderStars(stats.rating)}
+              </div>
+            )}
+            <p className="text-xs text-slate-500 mt-1">
+              {stats.ratingsCount > 0 ? `${stats.ratingsCount} تقييم` : 'لا توجد تقييمات'}
+            </p>
+          </Link>
+          
+          <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+            <div className="text-2xl mb-1">📅</div>
+            <div className="text-xl font-bold text-blue-600">{stats.upcomingSessions}</div>
+            <p className="text-xs text-slate-500">جلسات قادمة</p>
+          </div>
+          <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+            <div className="text-2xl mb-1">⚖️</div>
+            <div className="text-xl font-bold text-purple-600">{stats.activeCases}</div>
+            <p className="text-xs text-slate-500">قضايا</p>
+          </div>
+          <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+            <div className="text-2xl mb-1">✅</div>
+            <div className="text-xl font-bold text-green-600">{stats.completed}</div>
+            <p className="text-xs text-slate-500">مكتملة</p>
+          </div>
+          <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+            <div className="text-2xl mb-1">⚠️</div>
+            <div className="text-xl font-bold text-red-600">{stats.delayed}</div>
+            <p className="text-xs text-slate-500">متأخرة</p>
+          </div>
+          <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+            <div className="text-2xl mb-1">📋</div>
+            <div className="text-xl font-bold text-teal-600">{stats.myTasks}</div>
+            <p className="text-xs text-slate-500">مهامي</p>
           </div>
         </div>
 
-        <div className="divide-y divide-gray-100">
-          {platformRequests.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="text-5xl mb-4">📭</div>
-              <h4 className="text-lg font-semibold text-gray-700 mb-2">لا توجد طلبات جديدة</h4>
-              <p className="text-gray-500">ستظهر الطلبات الجديدة هنا فور وصولها</p>
+        {/* عروض بانتظار الترسية + طلبات جديدة */}
+        <div className="bg-white rounded-xl shadow-sm">
+          <div className="p-4 border-b border-slate-100">
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setActiveTab('pending')} 
+                className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}
+              >
+                🕐 عروض بانتظار الترسية
+                {pendingQuotes.length > 0 && <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingQuotes.length}</span>}
+              </button>
+              <button 
+                onClick={() => setActiveTab('new')} 
+                className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${activeTab === 'new' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}
+              >
+                🆕 طلبات جديدة
+                {newRequests.length > 0 && <span className="bg-emerald-500 text-white text-xs px-2 py-0.5 rounded-full">{newRequests.length}</span>}
+              </button>
             </div>
-          ) : (
-            platformRequests.map((req) => {
-              const deadline = getDeadlineText(req.deadline)
-              return (
-                <div key={req.id} className="p-6 hover:bg-gray-50 transition-all cursor-pointer">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1">
-                      <span className={`w-3 h-3 rounded-full ${req.base_price ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
-                      <div className="flex-1">
-                        <h4 className="text-base font-semibold text-gray-800 mb-1">{req.title || 'طلب خدمة قانونية'}</h4>
-                        <div className="flex items-center gap-4 text-sm text-gray-600">
-                          <span className={`font-bold ${req.base_price ? 'text-amber-700' : 'text-blue-600'}`}>
-                            {req.base_price ? `${req.base_price.toLocaleString()} ر.س` : 'عرض سعر'}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <span>🕐</span>
-                            {getTimeAgo(req.created_at)}
-                          </span>
-                          {deadline && (
-                            <span className={`flex items-center gap-1 ${deadline.color}`}>
-                              <span>⏳</span>
-                              {deadline.text}
-                            </span>
-                          )}
+          </div>
+          <div className="p-4">
+            {activeTab === 'pending' ? (
+              pendingQuotes.length > 0 ? (
+                <div className="space-y-3">
+                  {pendingQuotes.map((quote) => (
+                    <div key={quote.id} className="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <span className="text-amber-500 text-xl">🕐</span>
+                        <div>
+                          <p className="font-medium text-slate-800">{quote.service_requests?.title || 'عرض سعر'}</p>
+                          <p className="text-sm text-slate-500">{quote.service_requests?.ticket_number}</p>
                         </div>
                       </div>
+                      <span className="text-amber-600 font-bold">{quote.total_amount?.toLocaleString()} ر.س</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Link
-                        href={`/legal-arm-lawyer/requests/${req.id}`}
-                        className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-all"
-                      >
-                        تفاصيل
+                  ))}
+                </div>
+              ) : <div className="text-center py-8 text-slate-400">📭 لا توجد عروض بانتظار الترسية</div>
+            ) : (
+              newRequests.length > 0 ? (
+                <div className="space-y-3">
+                  {newRequests.map((req) => (
+                    <div key={req.id} className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <span className={`w-3 h-3 rounded-full ${req.base_price ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
+                        <div>
+                          <p className="font-medium text-slate-800">{req.title}</p>
+                          <p className="text-sm text-slate-500">{req.ticket_number} • {getTimeAgo(req.created_at)}</p>
+                        </div>
+                      </div>
+                      <span className={`text-sm font-bold ${req.base_price ? 'text-green-600' : 'text-amber-600'}`}>
+                        {req.base_price ? `${req.base_price.toLocaleString()} ر.س` : 'عرض سعر'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : <div className="text-center py-8 text-slate-400">📭 لا توجد طلبات جديدة</div>
+            )}
+          </div>
+          <div className="p-3 bg-slate-50 border-t text-center">
+            <Link href="/legal-arm-lawyer/my-tasks" className="text-emerald-600 hover:text-emerald-700 text-sm font-medium">
+              عرض جميع الطلبات ←
+            </Link>
+          </div>
+        </div>
+
+        {/* طلبات الباقات + طلبات المنصة */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* طلبات الباقات */}
+          <div className="bg-white rounded-xl shadow-sm">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                📦 طلبات الباقات
+                {packageRequests.length > 0 && <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full">{packageRequests.length}</span>}
+              </h2>
+              <Link href="/legal-arm-lawyer/package-requests" className="text-emerald-600 text-sm">الكل ←</Link>
+            </div>
+            <div className="p-4">
+              {packageRequests.length > 0 ? (
+                <div className="space-y-3">
+                  {packageRequests.map((req) => {
+                    const sla = getSLAStatus(req.sla_deadline)
+                    return (
+                      <Link key={req.id} href={`/legal-arm-lawyer/my-tasks/${req.id}`} className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
+                        <div>
+                          <p className="font-medium text-slate-800">{req.title}</p>
+                          <p className="text-sm text-slate-500">{req.ticket_number}</p>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded font-medium ${sla.color === 'red' ? 'bg-red-100 text-red-700' : sla.color === 'yellow' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+                          SLA: {sla.text}
+                        </span>
                       </Link>
-                      {req.base_price ? (
-                        <button className="px-4 py-2 bg-amber-600 rounded-lg text-sm font-semibold text-white hover:bg-amber-700 transition-all">
-                          قبول
-                        </button>
-                      ) : (
-                        <button className="px-4 py-2 bg-blue-600 rounded-lg text-sm font-semibold text-white hover:bg-blue-700 transition-all">
-                          تقديم عرض
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                    )
+                  })}
                 </div>
-              )
-            })
-          )}
-        </div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* بطاقات الإحصائيات */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <section className="grid grid-cols-5 gap-6">
-        <div className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-all">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <span className="text-blue-600 text-xl">📋</span>
-            </div>
-            <span className="text-xs text-green-600 font-semibold">+0%</span>
-          </div>
-          <h3 className="text-3xl font-bold text-gray-800 mb-1">{stats.newRequests}</h3>
-          <p className="text-sm text-gray-600">طلبات جديدة</p>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-all">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
-              <span className="text-amber-600 text-xl">⏳</span>
-            </div>
-            <span className="text-xs text-blue-600 font-semibold">+0%</span>
-          </div>
-          <h3 className="text-3xl font-bold text-gray-800 mb-1">{stats.inProgress}</h3>
-          <p className="text-sm text-gray-600">قيد التنفيذ</p>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-all">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-              <span className="text-red-600 text-xl">⚠️</span>
-            </div>
-            <span className="text-xs text-red-600 font-semibold">-0%</span>
-          </div>
-          <h3 className="text-3xl font-bold text-gray-800 mb-1">{stats.overdueSLA}</h3>
-          <p className="text-sm text-gray-600">متأخرة SLA</p>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-all">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-              <span className="text-purple-600 text-xl">⚖️</span>
-            </div>
-            <span className="text-xs text-green-600 font-semibold">+0%</span>
-          </div>
-          <h3 className="text-3xl font-bold text-gray-800 mb-1">{stats.activeCases}</h3>
-          <p className="text-sm text-gray-600">قضايا نشطة</p>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-all">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <span className="text-yellow-600 text-xl">⭐</span>
+              ) : <div className="text-center py-8 text-slate-400">📦 لا توجد طلبات باقات</div>}
             </div>
           </div>
-          <h3 className="text-3xl font-bold text-gray-800 mb-1">{stats.rating.toFixed(1)}</h3>
-          <p className="text-sm text-gray-600">تقييمي ({stats.ratingCount} تقييم)</p>
-        </div>
-      </section>
 
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* الجلسات والإشعارات والقضايا */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <section className="grid grid-cols-3 gap-6">
-        
-        {/* الجلسات القادمة */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-gray-800">📅 الجلسات القادمة</h3>
-            <Link href="/legal-arm-lawyer/calendar" className="text-sm text-blue-600 hover:text-blue-700 font-semibold">
-              عرض التقويم ←
-            </Link>
-          </div>
-          <div className="p-6">
-            {upcomingSessions.length === 0 ? (
-              <div className="text-center py-8">
-                <span className="text-4xl block mb-2">📅</span>
-                <p className="text-gray-500 text-sm">لا توجد جلسات قادمة</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {upcomingSessions.map((session) => (
-                  <div key={session.id} className="p-4 bg-gray-50 rounded-lg">
-                    <p className="font-semibold text-gray-800">{session.notes || 'جلسة محكمة'}</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {new Date(session.session_date).toLocaleDateString('ar-SA')} - {session.session_time}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* الإشعارات */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-gray-800">🔔 آخر الإشعارات</h3>
-            <Link href="/legal-arm-lawyer/notifications" className="text-sm text-blue-600 hover:text-blue-700 font-semibold">
-              عرض الكل ←
-            </Link>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {notifications.length === 0 ? (
-              <div className="p-6 text-center">
-                <span className="text-4xl block mb-2">🔔</span>
-                <p className="text-gray-500 text-sm">لا توجد إشعارات</p>
-              </div>
-            ) : (
-              notifications.map((notif) => (
-                <div key={notif.id} className="p-6 hover:bg-gray-50 transition-all cursor-pointer">
-                  <div className="flex items-start gap-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      notif.type === 'request' ? 'bg-blue-100' :
-                      notif.type === 'case' ? 'bg-amber-100' :
-                      notif.type === 'rating' ? 'bg-purple-100' : 'bg-gray-100'
-                    }`}>
-                      <span>{
-                        notif.type === 'request' ? '📋' :
-                        notif.type === 'case' ? '⚖️' :
-                        notif.type === 'rating' ? '⭐' : '🔔'
-                      }</span>
+          {/* طلبات المنصة الموحدة */}
+          <div className="bg-white rounded-xl shadow-sm">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                🌐 طلبات المنصة الموحدة
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+              </h2>
+              <Link href="/marketplace/requests" className="text-emerald-600 text-sm">الكل ←</Link>
+            </div>
+            <div className="p-4">
+              {platformRequests.length > 0 ? (
+                <div className="space-y-3">
+                  {platformRequests.map((req) => (
+                    <div key={req.id} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <span className={`w-2 h-2 rounded-full ${req.base_price ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
+                        <div>
+                          <p className="font-medium text-slate-800">{req.title}</p>
+                          <p className="text-sm text-slate-500">{getTimeAgo(req.created_at)}</p>
+                        </div>
+                      </div>
+                      <span className={`text-sm font-bold ${req.base_price ? 'text-green-600' : 'text-amber-600'}`}>
+                        {req.base_price ? `${req.base_price.toLocaleString()} ر.س` : 'عرض سعر'}
+                      </span>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-800 mb-1">{notif.message || notif.title}</p>
-                      <span className="text-xs text-gray-500">{getTimeAgo(notif.created_at)}</span>
+                  ))}
+                </div>
+              ) : <div className="text-center py-8 text-slate-400">🌐 لا توجد طلبات متاحة</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* القضايا + الإشعارات + الجلسات */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* القضايا النشطة */}
+          <div className="bg-white rounded-xl shadow-sm">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="font-bold text-slate-800">⚖️ القضايا النشطة</h2>
+              <Link href="/legal-arm-lawyer/cases" className="text-emerald-600 text-sm">الكل ←</Link>
+            </div>
+            <div className="p-4">
+              {activeCases.length > 0 ? (
+                <div className="space-y-3">
+                  {activeCases.map((c) => (
+                    <Link key={c.id} href={`/legal-arm-lawyer/cases/${c.id}`} className="block p-3 bg-slate-50 rounded-lg hover:bg-slate-100">
+                      <p className="font-medium text-slate-800">{c.title}</p>
+                      <p className="text-sm text-slate-500">{c.case_number}</p>
+                    </Link>
+                  ))}
+                </div>
+              ) : <div className="text-center py-6 text-slate-400">لا توجد قضايا نشطة</div>}
+            </div>
+          </div>
+
+          {/* آخر الإشعارات */}
+          <div className="bg-white rounded-xl shadow-sm">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="font-bold text-slate-800">🔔 آخر الإشعارات</h2>
+              <Link href="/legal-arm-lawyer/notifications" className="text-emerald-600 text-sm">الكل ←</Link>
+            </div>
+            <div className="p-4">
+              {notifications.length > 0 ? (
+                <div className="space-y-3">
+                  {notifications.map((n) => (
+                    <div key={n.id} className="p-3 bg-slate-50 rounded-lg">
+                      <p className="font-medium text-slate-800 text-sm">{n.title}</p>
+                      <p className="text-xs text-slate-500">{getTimeAgo(n.created_at)}</p>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))
-            )}
+              ) : <div className="text-center py-6 text-slate-400">لا توجد إشعارات</div>}
+            </div>
           </div>
-        </div>
 
-        {/* القضايا النشطة */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-gray-800">⚖️ القضايا النشطة</h3>
-            <Link href="/legal-arm-lawyer/cases" className="text-sm text-blue-600 hover:text-blue-700 font-semibold">
-              عرض الكل ←
-            </Link>
-          </div>
-          <div className="p-6">
-            {stats.activeCases === 0 ? (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-gray-400 text-2xl">⚖️</span>
+          {/* الجلسات القادمة */}
+          <div className="bg-white rounded-xl shadow-sm">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="font-bold text-slate-800">📅 الجلسات القادمة</h2>
+              <Link href="/legal-arm-lawyer/calendar" className="text-emerald-600 text-sm">التقويم ←</Link>
+            </div>
+            <div className="p-4">
+              {upcomingSessions.length > 0 ? (
+                <div className="space-y-3">
+                  {upcomingSessions.map((s) => (
+                    <div key={s.id} className="p-3 bg-slate-50 rounded-lg">
+                      <p className="font-medium text-slate-800 text-sm">{s.title}</p>
+                      <p className="text-xs text-slate-500">
+                        {new Date(s.start_datetime).toLocaleDateString('ar-SA')}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-                <p className="text-gray-500 text-sm">لا توجد قضايا نشطة حالياً</p>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-3xl font-bold text-gray-800">{stats.activeCases}</p>
-                <p className="text-gray-600">قضية نشطة</p>
-                <Link 
-                  href="/legal-arm-lawyer/cases"
-                  className="inline-block mt-4 px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700"
-                >
-                  عرض القضايا
-                </Link>
-              </div>
-            )}
+              ) : <div className="text-center py-6 text-slate-400">لا توجد جلسات قادمة</div>}
+            </div>
           </div>
         </div>
-      </section>
 
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* إحصائيات سريعة */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <section className="grid grid-cols-3 gap-6">
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold">إجمالي الأرباح</h3>
-            <span className="text-2xl opacity-75">📈</span>
-          </div>
-          <p className="text-3xl font-bold mb-2">0 ر.س</p>
-          <p className="text-sm opacity-90">هذا الشهر</p>
-        </div>
-
-        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold">معدل القبول</h3>
-            <span className="text-2xl opacity-75">📊</span>
-          </div>
-          <p className="text-3xl font-bold mb-2">0%</p>
-          <p className="text-sm opacity-90">من إجمالي العروض</p>
-        </div>
-
-        <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold">وقت الاستجابة</h3>
-            <span className="text-2xl opacity-75">⏱️</span>
-          </div>
-          <p className="text-3xl font-bold mb-2">- ساعة</p>
-          <p className="text-sm opacity-90">متوسط الرد</p>
-        </div>
-      </section>
-
+      </div>
     </div>
   )
 }

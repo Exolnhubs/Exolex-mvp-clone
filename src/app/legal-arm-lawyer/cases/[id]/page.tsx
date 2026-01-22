@@ -7,9 +7,9 @@ import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
 // ═══════════════════════════════════════════════════════════════
-// ⚖️ تفاصيل القضية - المحامي المستقل
+// ⚖️ تفاصيل القضية - محامي الذراع القانوني
 // 📅 تاريخ: 21 يناير 2026
-// 🔧 يتضمن: عرض تفاصيل القضية + إضافة جلسات
+// 🔧 تحديث: إضافة modal لإضافة جلسة
 // ═══════════════════════════════════════════════════════════════
 
 export default function CaseDetailsPage() {
@@ -47,7 +47,7 @@ export default function CaseDetailsPage() {
         .eq('id', lawyerId)
         .single()
 
-      if (lawyerData?.lawyer_type !== 'independent') {
+      if (lawyerData?.lawyer_type !== 'legal_arm') {
         router.push('/auth/lawyer-login')
         return
       }
@@ -63,7 +63,7 @@ export default function CaseDetailsPage() {
 
       if (!caseResult) {
         toast.error('القضية غير موجودة')
-        router.push('/independent/cases')
+        router.push('/legal-arm-lawyer/cases')
         return
       }
 
@@ -197,7 +197,7 @@ export default function CaseDetailsPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     )
   }
@@ -207,7 +207,7 @@ export default function CaseDetailsPage() {
       <div className="min-h-screen bg-slate-100 p-6 text-center" dir="rtl">
         <span className="text-6xl">❌</span>
         <p className="mt-4 text-slate-600">القضية غير موجودة</p>
-        <Link href="/independent/cases" className="text-blue-600 mt-2 inline-block">← العودة للقضايا</Link>
+        <Link href="/legal-arm-lawyer/cases" className="text-amber-600 mt-2 inline-block">← العودة للقضايا</Link>
       </div>
     )
   }
@@ -221,7 +221,7 @@ export default function CaseDetailsPage() {
 
         {/* Header */}
         <div className="bg-white rounded-xl shadow-sm p-6">
-          <Link href="/independent/cases" className="text-blue-600 text-sm mb-4 inline-block hover:underline">
+          <Link href="/legal-arm-lawyer/cases" className="text-amber-600 text-sm mb-4 inline-block hover:underline">
             ← العودة للقضايا
           </Link>
           
@@ -274,7 +274,7 @@ export default function CaseDetailsPage() {
                 onClick={() => setActiveTab(tab.key as any)}
                 className={`flex-1 px-4 py-3 text-center font-medium transition-all whitespace-nowrap ${
                   activeTab === tab.key
-                    ? 'text-blue-600 border-b-2 border-blue-500 bg-blue-50'
+                    ? 'text-amber-600 border-b-2 border-amber-500 bg-amber-50'
                     : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
@@ -428,7 +428,7 @@ export default function CaseDetailsPage() {
                   <h2 className="text-lg font-bold text-slate-800">📅 الجلسات</h2>
                   <button
                     onClick={() => setShowSessionModal(true)}
-                    className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600"
+                    className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-sm hover:bg-amber-600"
                   >
                     ➕ إضافة جلسة
                   </button>
@@ -475,7 +475,7 @@ export default function CaseDetailsPage() {
                     <p className="text-slate-400 mt-2">لا توجد جلسات مسجلة</p>
                     <button
                       onClick={() => setShowSessionModal(true)}
-                      className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                      className="mt-4 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600"
                     >
                       ➕ إضافة أول جلسة
                     </button>
@@ -572,7 +572,7 @@ export default function CaseDetailsPage() {
                   <h2 className="text-lg font-bold text-slate-800">📁 المستندات</h2>
                   <button
                     onClick={() => toast('🚧 قريباً - رفع مستند')}
-                    className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600"
+                    className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-sm hover:bg-amber-600"
                   >
                     ➕ رفع مستند
                   </button>
@@ -697,7 +697,7 @@ export default function CaseDetailsPage() {
                   type="text"
                   value={sessionForm.title}
                   onChange={(e) => setSessionForm({...sessionForm, title: e.target.value})}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                   placeholder={`جلسة محكمة - ${caseData?.court_name || ''}`}
                 />
               </div>
@@ -711,7 +711,7 @@ export default function CaseDetailsPage() {
                     type="date"
                     value={sessionForm.session_date}
                     onChange={(e) => setSessionForm({...sessionForm, session_date: e.target.value})}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                     required
                   />
                 </div>
@@ -723,7 +723,7 @@ export default function CaseDetailsPage() {
                     type="time"
                     value={sessionForm.session_time}
                     onChange={(e) => setSessionForm({...sessionForm, session_time: e.target.value})}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
               </div>
@@ -736,7 +736,7 @@ export default function CaseDetailsPage() {
                   type="text"
                   value={sessionForm.location}
                   onChange={(e) => setSessionForm({...sessionForm, location: e.target.value})}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                   placeholder="المحكمة - المدينة"
                 />
               </div>
@@ -748,7 +748,7 @@ export default function CaseDetailsPage() {
                 <textarea
                   value={sessionForm.description}
                   onChange={(e) => setSessionForm({...sessionForm, description: e.target.value})}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500"
                   rows={3}
                   placeholder="ملاحظات عن الجلسة..."
                 />
@@ -759,7 +759,7 @@ export default function CaseDetailsPage() {
                   type="checkbox"
                   checked={sessionForm.notify_client}
                   onChange={(e) => setSessionForm({...sessionForm, notify_client: e.target.checked})}
-                  className="w-4 h-4 text-blue-500 rounded"
+                  className="w-4 h-4 text-amber-500 rounded"
                 />
                 <span className="text-slate-700">إشعار المشترك بموعد الجلسة</span>
               </label>
@@ -775,7 +775,7 @@ export default function CaseDetailsPage() {
               <button 
                 onClick={handleAddSession}
                 disabled={isSubmitting || !sessionForm.session_date}
-                className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {isSubmitting ? (
                   <>
