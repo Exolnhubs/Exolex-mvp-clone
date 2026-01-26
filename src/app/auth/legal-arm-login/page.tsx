@@ -274,10 +274,10 @@ export default function LegalArmLoginPage() {
         // التوجيه
         if (!userData.name_ar || !userData.manager_national_id) {
           toast.success('مرحباً! يرجى إكمال بيانات التسجيل')
-          router.push('/legal-arm/complete-profile')
+          window.location.href = '/legal-arm/complete-profile'
         } else {
           toast.success(`مرحباً بك - ${userData.name_ar}`)
-          router.push(redirectUrl || '/legal-arm/dashboard')
+          window.location.href = redirectUrl || '/legal-arm/dashboard'
         }
       } else {
         // محامي
@@ -307,7 +307,7 @@ export default function LegalArmLoginPage() {
         })
 
         toast.success(`مرحباً بك - ${userData.full_name}`)
-        router.push(redirectUrl || '/legal-arm-lawyer/dashboard')
+        window.location.href = redirectUrl || '/legal-arm-lawyer/dashboard'
       }
 
     } catch (error: any) {

@@ -142,13 +142,14 @@ export default function LoginPage() {
           localStorage.setItem('exolex_user_id', existingUser.id)
           localStorage.setItem('exolex_phone', fullPhone)
           setAuthCookies(existingUser.id, 'member', memberData?.id)
-          router.push('/auth/complete-profile')
+          // Use full page redirect to ensure cookies are sent
+          window.location.href = '/auth/complete-profile'
         } else {
           localStorage.setItem('exolex_user_id', existingUser.id)
           setAuthCookies(existingUser.id, 'member', memberData?.id)
           toast.success('تم تسجيل الدخول بنجاح')
-          // Use redirect URL from query params
-          router.push(redirectUrl)
+          // Use full page redirect to ensure middleware sees the new cookies
+          window.location.href = redirectUrl
         }
       } else {
         const { data: newUser, error: createError } = await supabase
@@ -171,7 +172,8 @@ export default function LoginPage() {
         localStorage.setItem('exolex_user_id', newUser.id)
         localStorage.setItem('exolex_phone', fullPhone)
         setAuthCookies(newUser.id, 'member')
-        router.push('/auth/complete-profile')
+        // Use full page redirect to ensure cookies are sent
+        window.location.href = '/auth/complete-profile'
       }
 
     } catch (error: any) {

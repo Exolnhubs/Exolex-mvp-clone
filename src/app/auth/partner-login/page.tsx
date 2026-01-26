@@ -198,7 +198,7 @@ export default function PartnerLoginPage() {
         toast('⚠️ حسابكم قيد المراجعة، بعض الميزات محدودة', { duration: 5000 })
       }
 
-      router.push(redirectUrl || '/partner/dashboard')
+      window.location.href = redirectUrl || '/partner/dashboard'
 
     } catch (error: any) {
       console.error('Error:', error)

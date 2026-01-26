@@ -302,7 +302,7 @@ const accData: AccountData = {
             legalArmId: accountData.legal_arm_id
           })
           toast.success(`مرحباً ${accountData.full_name}`)
-          router.push(redirectUrl || '/legal-arm-lawyer/dashboard')
+          window.location.href = redirectUrl || '/legal-arm-lawyer/dashboard'
         } else {
           // محامي مستقل
           setAuthCookies({
@@ -310,7 +310,7 @@ const accData: AccountData = {
             userType: 'lawyer'
           })
           toast.success(`مرحباً ${accountData.full_name}`)
-          router.push(redirectUrl || '/independent/dashboard')
+          window.location.href = redirectUrl || '/independent/dashboard'
         }
       } else {
         // محامي شريك
@@ -330,7 +330,7 @@ const accData: AccountData = {
           partnerId: accountData.partner_id
         })
         toast.success(`مرحباً ${accountData.full_name}`)
-        router.push(redirectUrl || '/partner-employee/dashboard')
+        window.location.href = redirectUrl || '/partner-employee/dashboard'
       }
 
     } catch (error: any) {
