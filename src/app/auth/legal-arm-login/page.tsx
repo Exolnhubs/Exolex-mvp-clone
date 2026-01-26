@@ -3,11 +3,31 @@
 export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { Building2, User, ArrowLeft } from 'lucide-react'
+
+// Helper to set auth cookies for middleware transition
+function setAuthCookies(data: {
+  legalArmId?: string
+  lawyerId?: string
+  userId?: string
+  userType: string
+}) {
+  const maxAge = 7 * 24 * 60 * 60 // 7 days
+  if (data.userId) {
+    document.cookie = `exolex_user_id=${data.userId}; path=/; max-age=${maxAge}; SameSite=Lax`
+  }
+  if (data.lawyerId) {
+    document.cookie = `exolex_lawyer_id=${data.lawyerId}; path=/; max-age=${maxAge}; SameSite=Lax`
+  }
+  if (data.legalArmId) {
+    document.cookie = `exolex_arm_id=${data.legalArmId}; path=/; max-age=${maxAge}; SameSite=Lax`
+  }
+  document.cookie = `exolex_user_type=${data.userType}; path=/; max-age=${maxAge}; SameSite=Lax`
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة دخول الذراع القانوني (محدّثة)
@@ -18,7 +38,9 @@ import { Building2, User, ArrowLeft } from 'lucide-react'
 
 export default function LegalArmLoginPage() {
   const router = useRouter()
-  
+  const searchParams = useSearchParams()
+  const redirectUrl = searchParams.get('redirect')
+
   // نوع الدخول: manager أو lawyer
   const [loginType, setLoginType] = useState<'manager' | 'lawyer'>('manager')
   
@@ -244,6 +266,10 @@ export default function LegalArmLoginPage() {
         localStorage.setItem('exolex_arm_id', userData.id)
         localStorage.setItem('exolex_arm_name', userData.name_ar || '')
         localStorage.setItem('exolex_user_type', 'legal_arm')
+        setAuthCookies({
+          legalArmId: userData.id,
+          userType: 'legal_arm'
+        })
 
         // التوجيه
         if (!userData.name_ar || !userData.manager_national_id) {
@@ -251,7 +277,7 @@ export default function LegalArmLoginPage() {
           router.push('/legal-arm/complete-profile')
         } else {
           toast.success(`مرحباً بك - ${userData.name_ar}`)
-          router.push('/legal-arm/dashboard')
+          router.push(redirectUrl || '/legal-arm/dashboard')
         }
       } else {
         // محامي
@@ -273,9 +299,15 @@ export default function LegalArmLoginPage() {
         if (userData.user_id) {
           localStorage.setItem('exolex_user_id', userData.user_id)
         }
+        setAuthCookies({
+          lawyerId: userData.id,
+          userId: userData.user_id,
+          legalArmId: userData.legal_arm_id,
+          userType: 'lawyer'
+        })
 
         toast.success(`مرحباً بك - ${userData.full_name}`)
-        router.push('/legal-arm-lawyer/dashboard')
+        router.push(redirectUrl || '/legal-arm-lawyer/dashboard')
       }
 
     } catch (error: any) {

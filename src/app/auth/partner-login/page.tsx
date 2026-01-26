@@ -3,10 +3,18 @@
 export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
+
+// Helper to set auth cookies for middleware transition
+function setAuthCookies(partnerId: string) {
+  const maxAge = 7 * 24 * 60 * 60 // 7 days
+  document.cookie = `exolex_user_id=${partnerId}; path=/; max-age=${maxAge}; SameSite=Lax`
+  document.cookie = `exolex_partner_id=${partnerId}; path=/; max-age=${maxAge}; SameSite=Lax`
+  document.cookie = `exolex_user_type=partner; path=/; max-age=${maxAge}; SameSite=Lax`
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة دخول الشريك القانوني
@@ -16,6 +24,8 @@ import { supabase } from '@/lib/supabase'
 
 export default function PartnerLoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectUrl = searchParams.get('redirect')
   const [step, setStep] = useState<'input' | 'otp'>('input')
   const [isLoading, setIsLoading] = useState(false)
   
@@ -179,6 +189,7 @@ export default function PartnerLoginPage() {
       localStorage.setItem('exolex_partner_id', partnerData.id)
       localStorage.setItem('exolex_partner_name', partnerData.company_name_ar)
       localStorage.setItem('exolex_user_type', 'partner')
+      setAuthCookies(partnerData.id)
 
       toast.success(`مرحباً بك - ${partnerData.company_name_ar}`)
 
@@ -187,7 +198,7 @@ export default function PartnerLoginPage() {
         toast('⚠️ حسابكم قيد المراجعة، بعض الميزات محدودة', { duration: 5000 })
       }
 
-      router.push('/partner/dashboard')
+      router.push(redirectUrl || '/partner/dashboard')
 
     } catch (error: any) {
       console.error('Error:', error)
