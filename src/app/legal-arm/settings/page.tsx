@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logoutLegalArm } from '@/lib/auth'
 import toast from 'react-hot-toast'
 
 // ═══════════════════════════════════════════════════════════════
@@ -271,8 +272,7 @@ export default function SettingsPage() {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('exolex_legal_arm_id')
-    router.push('/auth/legal-arm-login')
+    logoutLegalArm()
   }
 
   if (isLoading) {

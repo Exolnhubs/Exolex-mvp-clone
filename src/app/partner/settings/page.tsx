@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logoutPartner } from '@/lib/auth'
 import toast from 'react-hot-toast'
 
 // ═══════════════════════════════════════════════════════════════
@@ -282,8 +283,7 @@ export default function SettingsPage() {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('exolex_partner_id')
-    router.push('/auth/partner-login')
+    logoutPartner()
   }
 
   if (isLoading) {
