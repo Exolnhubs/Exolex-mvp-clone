@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { logoutLawyer } from '@/lib/auth'
 import QuoteFormModal, { QuoteFormData } from '@/components/QuoteFormModal'
 import { X, User, Clock, Flag, Send, CheckCircle, Eye, Download, FileText as FileIcon, Coins } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -161,10 +162,7 @@ const [submitting, setSubmitting] = useState(false)
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('exolex_lawyer_id')
-    localStorage.removeItem('exolex_lawyer_code')
-    localStorage.removeItem('exolex_legal_arm_id')
-    router.push('/auth/lawyer-login')
+    logoutLawyer()
   }
 
   const getTimeAgo = (date: string) => {
