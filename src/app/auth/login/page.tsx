@@ -2,13 +2,25 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 
+// Helper to set auth cookies for middleware transition
+function setAuthCookies(userId: string, userType: string = 'member', memberId?: string) {
+  const maxAge = 7 * 24 * 60 * 60 // 7 days
+  document.cookie = `exolex_user_id=${userId}; path=/; max-age=${maxAge}; SameSite=Lax`
+  document.cookie = `exolex_user_type=${userType}; path=/; max-age=${maxAge}; SameSite=Lax`
+  if (memberId) {
+    document.cookie = `exolex_member_id=${memberId}; path=/; max-age=${maxAge}; SameSite=Lax`
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectUrl = searchParams.get('redirect') || '/subscriber/dashboard'
   const [step, setStep] = useState<'input' | 'otp'>('input')
   const [isLoading, setIsLoading] = useState(false)
   
@@ -119,14 +131,25 @@ export default function LoginPage() {
         .single()
 
       if (existingUser) {
+        // Get member_id for the user
+        const { data: memberData } = await supabase
+          .from('members')
+          .select('id')
+          .eq('user_id', existingUser.id)
+          .single()
+
         if (!existingUser.is_profile_complete) {
           localStorage.setItem('exolex_user_id', existingUser.id)
           localStorage.setItem('exolex_phone', fullPhone)
-          router.push('/auth/complete-profile')
+          setAuthCookies(existingUser.id, 'member', memberData?.id)
+          // Use full page redirect to ensure cookies are sent
+          window.location.href = '/auth/complete-profile'
         } else {
           localStorage.setItem('exolex_user_id', existingUser.id)
+          setAuthCookies(existingUser.id, 'member', memberData?.id)
           toast.success('تم تسجيل الدخول بنجاح')
-          router.push('/subscriber/dashboard')
+          // Use full page redirect to ensure middleware sees the new cookies
+          window.location.href = redirectUrl
         }
       } else {
         const { data: newUser, error: createError } = await supabase
@@ -148,7 +171,9 @@ export default function LoginPage() {
 
         localStorage.setItem('exolex_user_id', newUser.id)
         localStorage.setItem('exolex_phone', fullPhone)
-        router.push('/auth/complete-profile')
+        setAuthCookies(newUser.id, 'member')
+        // Use full page redirect to ensure cookies are sent
+        window.location.href = '/auth/complete-profile'
       }
 
     } catch (error: any) {

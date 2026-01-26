@@ -1,10 +1,35 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
+
+// Helper to set auth cookies for middleware transition
+function setAuthCookies(data: {
+  lawyerId?: string
+  employeeId?: string
+  userType: string
+  legalArmId?: string
+  partnerId?: string
+}) {
+  const maxAge = 7 * 24 * 60 * 60 // 7 days
+  if (data.lawyerId) {
+    document.cookie = `exolex_user_id=${data.lawyerId}; path=/; max-age=${maxAge}; SameSite=Lax`
+    document.cookie = `exolex_lawyer_id=${data.lawyerId}; path=/; max-age=${maxAge}; SameSite=Lax`
+  }
+  if (data.employeeId) {
+    document.cookie = `exolex_user_id=${data.employeeId}; path=/; max-age=${maxAge}; SameSite=Lax`
+  }
+  document.cookie = `exolex_user_type=${data.userType}; path=/; max-age=${maxAge}; SameSite=Lax`
+  if (data.legalArmId) {
+    document.cookie = `exolex_arm_id=${data.legalArmId}; path=/; max-age=${maxAge}; SameSite=Lax`
+  }
+  if (data.partnerId) {
+    document.cookie = `exolex_partner_id=${data.partnerId}; path=/; max-age=${maxAge}; SameSite=Lax`
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة دخول المحامين
@@ -46,6 +71,8 @@ interface AccountData {
 
 export default function LawyerLoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectUrl = searchParams.get('redirect')
   const [step, setStep] = useState<'input' | 'otp'>('input')
   const [isLoading, setIsLoading] = useState(false)
   
@@ -261,7 +288,7 @@ const accData: AccountData = {
         // محامي (ذراع أو مستقل)
         localStorage.setItem('exolex_lawyer_id', accountData.id)
         localStorage.setItem('exolex_user_type', 'lawyer')
-        
+
         if (accountData.lawyer_code) {
           localStorage.setItem('exolex_lawyer_code', accountData.lawyer_code)
         }
@@ -269,27 +296,41 @@ const accData: AccountData = {
         if (accountData.legal_arm_id) {
           // محامي ذراع قانوني
           localStorage.setItem('exolex_legal_arm_id', accountData.legal_arm_id)
+          setAuthCookies({
+            lawyerId: accountData.id,
+            userType: 'lawyer',
+            legalArmId: accountData.legal_arm_id
+          })
           toast.success(`مرحباً ${accountData.full_name}`)
-          router.push('/legal-arm-lawyer/dashboard')
+          window.location.href = redirectUrl || '/legal-arm-lawyer/dashboard'
         } else {
           // محامي مستقل
+          setAuthCookies({
+            lawyerId: accountData.id,
+            userType: 'lawyer'
+          })
           toast.success(`مرحباً ${accountData.full_name}`)
-          router.push('/independent/dashboard')
+          window.location.href = redirectUrl || '/independent/dashboard'
         }
       } else {
         // محامي شريك
         localStorage.setItem('exolex_employee_id', accountData.id)
         localStorage.setItem('exolex_user_type', 'partner_employee')
-        
+
         if (accountData.employee_code) {
           localStorage.setItem('exolex_employee_code', accountData.employee_code)
         }
         if (accountData.partner_id) {
           localStorage.setItem('exolex_partner_id', accountData.partner_id)
         }
-        
+
+        setAuthCookies({
+          employeeId: accountData.id,
+          userType: 'partner_employee',
+          partnerId: accountData.partner_id
+        })
         toast.success(`مرحباً ${accountData.full_name}`)
-        router.push('/partner-employee/dashboard')
+        window.location.href = redirectUrl || '/partner-employee/dashboard'
       }
 
     } catch (error: any) {

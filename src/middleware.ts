@@ -9,8 +9,15 @@ import {
   getSessionFromRequest,
   canAccessRoute,
   getDefaultRedirectForRole,
-  type UserRole
+  type UserRole,
+  type SessionData
 } from '@/lib/supabase-server'
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Transition Mode: Support both cookie-based and localStorage-based auth
+// Set to false once fully migrated to cookie-based auth
+// ═══════════════════════════════════════════════════════════════════════════════
+const TRANSITION_MODE = true
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Route Configuration
@@ -94,7 +101,29 @@ export async function middleware(request: NextRequest) {
   }
 
   // Get session from secure cookie
-  const session = getSessionFromRequest(request)
+  let session = getSessionFromRequest(request)
+
+  // TRANSITION MODE: Also check for localStorage-based auth via cookie fallback
+  // This allows existing localStorage auth to work during migration
+  if (TRANSITION_MODE && !session) {
+    const legacyUserId = request.cookies.get('exolex_user_id')?.value
+    const legacyUserType = request.cookies.get('exolex_user_type')?.value as UserRole | undefined
+
+    if (legacyUserId) {
+      // Create a temporary session from legacy auth
+      session = {
+        userId: legacyUserId,
+        userType: legacyUserType || 'member',
+        phone: '',
+        expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000), // 7 days
+        memberId: legacyUserType === 'member' ? request.cookies.get('exolex_member_id')?.value : undefined,
+        lawyerId: legacyUserType === 'lawyer' ? request.cookies.get('exolex_lawyer_id')?.value : undefined,
+        partnerId: legacyUserType === 'partner' ? request.cookies.get('exolex_partner_id')?.value : undefined,
+        legalArmId: request.cookies.get('exolex_arm_id')?.value,
+      }
+    }
+  }
+
   const isAuthenticated = !!session
 
   // ─────────────────────────────────────────────────────────────
