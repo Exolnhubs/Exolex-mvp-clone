@@ -17,9 +17,9 @@ const supabase = createClient(
 // Validation schema for OTP request
 const OTP_REQUEST_SCHEMA = {
   phone: { required: true, type: 'string' as const },
-  purpose: { type: 'string' as const, enum: ['login', 'register', 'verify', 'legal_arm_invite'] as const },
+  purpose: { type: 'string' as const, enum: ['login', 'register', 'verify', 'legal_arm_invite', 'lawyer_login', 'legal_arm_login', 'partner_login'] as const },
   legal_arm_id: { type: 'string' as const },
-  national_id: { type: 'string' as const, pattern: /^[12][0-9]{9}$/ },
+  national_id: { type: 'string' as const },
   requesting_lawyer_id: { type: 'string' as const },
 }
 
