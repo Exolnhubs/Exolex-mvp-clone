@@ -73,22 +73,17 @@ export default function PackageRequestsPage() {
         .in('status', ['pending_assignment', 'new', 'open'])
         .order('created_at', { ascending: false })
 
-      if (err1) console.error('Error available:', err1)
-      console.log("Available:", available)
       setAvailableRequests(available || [])
 
       // 2. طلبات الباقات المسندة لهذا المحامي
-      const { data: assigned, error: err2 } = await supabase
+      const { data: assigned } = await supabase
         .from('service_requests')
         .select('*')
         .eq('source', 'package')
         .eq('assigned_lawyer_id', lawyerId)
         .order('created_at', { ascending: false })
 
-      if (err2) console.error('Error:', err2)
-      console.log("Assigned:", assigned)
       setAssignedRequests(assigned || [])
-      console.log("Assigned requests:", assigned); setAssignedRequests(assigned || [])
 
     } catch (err) {
       console.error(err)

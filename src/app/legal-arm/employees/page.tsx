@@ -237,7 +237,6 @@ export default function LegalArmEmployeesPage() {
       await navigator.clipboard.writeText(inviteUrl)
 
       toast.success('✅ تم إنشاء الدعوة! تم نسخ الرابط للحافظة')
-      console.log('🔗 رابط الدعوة:', inviteUrl)
 
       setShowModal(false)
       resetForm()

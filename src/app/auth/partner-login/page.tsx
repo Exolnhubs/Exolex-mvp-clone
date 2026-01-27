@@ -122,8 +122,7 @@ export default function PartnerLoginPage() {
 
       if (otpError) throw otpError
 
-      console.log('🔐 رمز التحقق للشريك:', otpCode)
-      toast.success(`تم إرسال رمز التحقق (للتجربة: ${otpCode})`)
+      toast.success('تم إرسال رمز التحقق')
       
       setStep('otp')
     } catch (error: any) {

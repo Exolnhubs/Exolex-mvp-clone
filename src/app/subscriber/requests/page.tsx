@@ -110,14 +110,12 @@ export default function RequestsPage() {
       const allRequests: UnifiedRequest[] = []
 
       // 1. طلبات service_requests (استشارات وقضايا)
-      console.log("Member ID:", memberData?.id)
-      const { data: serviceRequests, error: reqError } = await supabase
+      const { data: serviceRequests } = await supabase
         .from('service_requests')
         .select('*, category:categories(name_ar, color)')
         .eq('member_id', memberData?.id)
         .order('created_at', { ascending: false })
 
-      console.log("Service Requests:", serviceRequests, "Error:", reqError)
       if (serviceRequests) {
         serviceRequests.forEach((req: any) => {
           allRequests.push({

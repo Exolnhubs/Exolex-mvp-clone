@@ -78,13 +78,11 @@ export default function LegalArmOrganizationPage() {
   // ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const armId = localStorage.getItem('exolex_legal_arm_id')
-    console.log('🟣 Legal Arm ID:', armId)
     setLegalArmId(armId)
-    
+
     if (armId) {
       loadData(armId)
     } else {
-      console.log('🔴 No Legal Arm ID found!')
       setIsLoading(false)
     }
   }, [])
@@ -141,8 +139,6 @@ export default function LegalArmOrganizationPage() {
         .eq('legal_arm_id', armId)
         .order('created_at', { ascending: false })
       setLawyers(lawyersData || [])
-
-      console.log('🟣 Data loaded successfully')
     } catch (error) {
       console.error('Error loading data:', error)
       toast.error('حدث خطأ في تحميل البيانات')

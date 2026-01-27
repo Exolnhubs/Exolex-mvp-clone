@@ -78,8 +78,7 @@ export default function LoginPage() {
 
       if (otpError) throw otpError
 
-      console.log('🔐 رمز التحقق:', otpCode)
-      toast.success(`تم إرسال رمز التحقق (للتجربة: ${otpCode})`)
+      toast.success('تم إرسال رمز التحقق')
       
       setStep('otp')
     } catch (error: any) {

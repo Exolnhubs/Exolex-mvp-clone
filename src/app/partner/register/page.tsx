@@ -134,8 +134,7 @@ export default function PartnerRegisterPage() {
 
       if (otpError) throw otpError
 
-      console.log('🔐 رمز التحقق:', otpCode)
-      toast.success(`تم إرسال رمز التحقق (للتجربة: ${otpCode})`)
+      toast.success('تم إرسال رمز التحقق')
       setOtpSent(true)
       
     } catch (error: any) {
@@ -228,8 +227,7 @@ export default function PartnerRegisterPage() {
 
       if (otpError) throw otpError
 
-      console.log('📧 رمز التحقق للبريد:', otpCode)
-      toast.success(`تم إرسال رمز التحقق للبريد (للتجربة: ${otpCode})`)
+      toast.success('تم إرسال رمز التحقق للبريد')
       setEmailOtpSent(true)
       
     } catch (error: any) {

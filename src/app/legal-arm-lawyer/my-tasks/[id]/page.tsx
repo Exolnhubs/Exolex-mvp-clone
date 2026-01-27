@@ -719,31 +719,23 @@ export default function ArmLawyerRequestProcessingPage() {
     const file = event.target.files?.[0]
     if (!file) return
 
-    console.log('📁 Starting file upload:', file.name, file.size, file.type)
-
     try {
       const fileName = `${requestId}/${Date.now()}_${file.name}`
-      console.log('📁 Upload path:', fileName)
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
+
+      const { error: uploadError } = await supabase.storage
         .from('request-files')
         .upload(fileName, file)
 
       if (uploadError) {
-        console.error('❌ Storage upload error:', uploadError)
         toast.error(`خطأ في الرفع: ${uploadError.message}`)
         return
       }
-      
-      console.log('✅ File uploaded to storage:', uploadData)
 
       const { data: urlData } = supabase.storage
         .from('request-files')
         .getPublicUrl(fileName)
-        
-      console.log('📎 Public URL:', urlData.publicUrl)
 
-      const { data: insertData, error: insertError } = await supabase.from('request_files').insert({
+      const { error: insertError } = await supabase.from('request_files').insert({
         request_id: requestId,
         uploaded_by: currentLawyer?.id,
         uploaded_by_type: 'lawyer',
@@ -756,20 +748,16 @@ export default function ArmLawyerRequestProcessingPage() {
       }).select()
 
       if (insertError) {
-        console.error('❌ Database insert error:', insertError)
         toast.error(`خطأ في حفظ المعلومات: ${insertError.message}`)
         return
       }
-      
-      console.log('✅ File record saved:', insertData)
 
       await logActivity('upload_file', `رفع ملف: ${file.name}`)
       toast.success('✅ تم رفع الملف')
       loadFiles()
-      
+
       event.target.value = ''
     } catch (error: any) {
-      console.error('❌ Full error:', error)
       toast.error(error.message || 'حدث خطأ في رفع الملف')
     }
   }
@@ -832,7 +820,7 @@ export default function ArmLawyerRequestProcessingPage() {
           reference_id: requestId,
           reference_type: 'request'
         })
-        if (notifyError) console.log('Notification error:', notifyError)
+        // Non-critical: notification failed silently
       }
 
       await logActivity('add_appointment', `إضافة موعد: ${appointmentForm.title}`)

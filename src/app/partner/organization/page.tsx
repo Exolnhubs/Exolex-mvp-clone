@@ -86,13 +86,11 @@ export default function PartnerOrganizationPage() {
   // ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const pId = localStorage.getItem('exolex_partner_id')
-    console.log('🟢 Partner ID:', pId)
     setPartnerId(pId)
-    
+
     if (pId) {
       loadData(pId)
     } else {
-      console.log('🔴 No Partner ID found!')
       setIsLoading(false)
     }
   }, [])
@@ -149,8 +147,6 @@ export default function PartnerOrganizationPage() {
         .eq('partner_id', pId)
         .order('created_at', { ascending: false })
       setEmployees(employeesData || [])
-
-      console.log('🟢 Data loaded successfully')
     } catch (error) {
       console.error('Error loading data:', error)
       toast.error('حدث خطأ في تحميل البيانات')

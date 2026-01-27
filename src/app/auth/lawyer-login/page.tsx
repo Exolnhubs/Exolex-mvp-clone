@@ -222,8 +222,7 @@ const accData: AccountData = {
       setAccountData(accData)
       setMaskedPhone(maskPhone(accData.phone))
       setStep('otp')
-      console.log('🔐 رمز التحقق:', result.debug_code)
-      toast.success(`تم إرسال رمز التحقق (للتجربة: ${result.debug_code})`)
+      toast.success('تم إرسال رمز التحقق')
 
     } catch (error: any) {
       console.error('Login error:', error)
@@ -371,8 +370,7 @@ const accData: AccountData = {
 
       const result = await response.json()
       if (response.ok) {
-        console.log('🔐 رمز التحقق:', result.debug_code)
-        toast.success(`تم إعادة إرسال رمز التحقق (للتجربة: ${result.debug_code})`)
+        toast.success('تم إعادة إرسال رمز التحقق')
         setOtp(['', '', '', '', '', ''])
       } else {
         throw new Error('فشل إعادة الإرسال')
