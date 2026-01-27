@@ -5,33 +5,74 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { validateBody, sanitizePhone, isValidSaudiPhone } from '@/lib/validate'
+import { otpRateLimiter, rateLimitResponse, isPhoneBlocked } from '@/lib/rate-limit'
+import { logger, createRequestContext } from '@/lib/logger'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { phone, purpose, legal_arm_id, national_id, requesting_lawyer_id } = body
+// Validation schema for OTP request
+const OTP_REQUEST_SCHEMA = {
+  phone: { required: true, type: 'string' as const },
+  purpose: { type: 'string' as const, enum: ['login', 'register', 'verify', 'legal_arm_invite'] as const },
+  legal_arm_id: { type: 'string' as const },
+  national_id: { type: 'string' as const, pattern: /^[12][0-9]{9}$/ },
+  requesting_lawyer_id: { type: 'string' as const },
+}
 
-    // التحقق من البيانات المطلوبة
-    if (!phone) {
+export async function POST(request: NextRequest) {
+  const ctx = createRequestContext(request)
+
+  try {
+    // Parse and validate request body
+    let body: Record<string, unknown>
+    try {
+      body = await request.json()
+    } catch {
       return NextResponse.json(
-        { error: 'رقم الجوال مطلوب' },
+        { success: false, error: 'طلب غير صالح', requestId: ctx.requestId },
         { status: 400 }
       )
     }
 
-    // تنسيق رقم الجوال
-    let formattedPhone = phone.replace(/\s/g, '')
-    if (formattedPhone.startsWith('05')) {
-      formattedPhone = '+966' + formattedPhone.substring(1)
-    } else if (formattedPhone.startsWith('5')) {
-      formattedPhone = '+966' + formattedPhone
-    } else if (!formattedPhone.startsWith('+')) {
-      formattedPhone = '+966' + formattedPhone
+    // Validate input
+    const validation = validateBody(body, OTP_REQUEST_SCHEMA)
+    if (!validation.valid) {
+      logger.security(ctx, 'Invalid OTP request', { errors: validation.errors })
+      return NextResponse.json(
+        { success: false, error: 'بيانات غير صالحة', details: validation.errors, requestId: ctx.requestId },
+        { status: 400 }
+      )
+    }
+
+    const { purpose, legal_arm_id, national_id, requesting_lawyer_id } = validation.sanitized
+
+    // Sanitize and validate phone
+    const formattedPhone = sanitizePhone(body.phone)
+    if (!isValidSaudiPhone(formattedPhone)) {
+      return NextResponse.json(
+        { success: false, error: 'رقم الجوال غير صالح. يجب أن يكون رقم سعودي', requestId: ctx.requestId },
+        { status: 400 }
+      )
+    }
+
+    // Check if phone is blocked (too many failed attempts)
+    if (isPhoneBlocked(formattedPhone)) {
+      logger.security(ctx, 'Blocked phone attempted OTP', { phone: formattedPhone })
+      return NextResponse.json(
+        { success: false, error: 'تم حظر هذا الرقم مؤقتاً. حاول بعد ساعة', requestId: ctx.requestId },
+        { status: 429 }
+      )
+    }
+
+    // Rate limiting - 3 OTPs per phone per hour
+    const rateLimit = otpRateLimiter.check(formattedPhone)
+    if (!rateLimit.success) {
+      logger.security(ctx, 'OTP rate limit exceeded', { phone: formattedPhone })
+      return rateLimitResponse(rateLimit)
     }
 
     // إلغاء أي OTP سابق لنفس الرقم والغرض
@@ -44,12 +85,12 @@ export async function POST(request: NextRequest) {
 
     // إنشاء رمز OTP جديد (6 أرقام)
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
-    
+
     // تاريخ انتهاء الصلاحية (5 دقائق)
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
 
     // حفظ OTP في قاعدة البيانات
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('otp_verifications')
       .insert({
         phone: formattedPhone,
@@ -64,13 +105,11 @@ export async function POST(request: NextRequest) {
         max_attempts: 3,
         expires_at: expiresAt
       })
-      .select()
-      .single()
 
     if (error) {
-      console.error('❌ Error creating OTP:', error)
+      logger.error(ctx, new Error(`OTP creation failed: ${error.message}`))
       return NextResponse.json(
-        { error: 'حدث خطأ في إنشاء رمز التحقق' },
+        { success: false, error: 'حدث خطأ في إنشاء رمز التحقق', requestId: ctx.requestId },
         { status: 500 }
       )
     }
@@ -79,23 +118,28 @@ export async function POST(request: NextRequest) {
     // TODO: إرسال SMS فعلي عبر Twilio أو غيره
     // حالياً نطبع الرمز في console للتجربة
     // ═══════════════════════════════════════════════════════════
-    console.log('═══════════════════════════════════════')
-    console.log('🔐 رمز التحقق OTP:', otpCode)
-    console.log('📱 الجوال:', formattedPhone)
-    console.log('📋 الغرض:', purpose)
-    console.log('═══════════════════════════════════════')
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('═══════════════════════════════════════')
+      console.log('🔐 رمز التحقق OTP:', otpCode)
+      console.log('📱 الجوال:', formattedPhone)
+      console.log('📋 الغرض:', purpose)
+      console.log('═══════════════════════════════════════')
+    }
+
+    logger.info('OTP sent successfully', { phone: formattedPhone, purpose })
 
     return NextResponse.json({
       success: true,
       message: 'تم إرسال رمز التحقق',
-      // للتجربة فقط - احذف هذا السطر في الإنتاج
+      requestId: ctx.requestId,
+      // للتجربة فقط - يُحذف في الإنتاج
       debug_code: process.env.NODE_ENV === 'development' ? otpCode : undefined
     })
 
-  } catch (error: any) {
-    console.error('❌ Send OTP Error:', error)
+  } catch (error) {
+    logger.error(ctx, error instanceof Error ? error : new Error(String(error)))
     return NextResponse.json(
-      { error: 'حدث خطأ في إرسال رمز التحقق' },
+      { success: false, error: 'حدث خطأ في إرسال رمز التحقق', requestId: ctx.requestId },
       { status: 500 }
     )
   }

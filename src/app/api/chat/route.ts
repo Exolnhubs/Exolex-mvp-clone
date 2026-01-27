@@ -6,10 +6,24 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import { validateBody, sanitizeString, containsXSS } from '@/lib/validate'
+import { chatRateLimiter, rateLimitResponse, getClientIdentifier } from '@/lib/rate-limit'
+import { logger, createRequestContext } from '@/lib/logger'
+import { getUserFromHeaders } from '@/lib/api-guard'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
+
+// ─────────────────────────────────────────────────────────────
+// Validation Schema
+// ─────────────────────────────────────────────────────────────
+const CHAT_REQUEST_SCHEMA = {
+  question: { required: true, type: 'string' as const, minLength: 1, maxLength: 5000 },
+  mode: { type: 'string' as const, enum: ['normal', 'consultation', 'consultation_analysis'] as const },
+  context: { type: 'object' as const },
+  conversationHistory: { type: 'array' as const },
+}
 
 // ─────────────────────────────────────────────────────────────
 // 🚨 كلمات الحالات الطارئة
@@ -40,17 +54,17 @@ const LAWYER_REQUEST_KEYWORDS = [
 function detectEmergency(text: string): { isEmergency: boolean; type: string; keywords: string[] } {
   const lowerText = text.toLowerCase()
   const foundKeywords: string[] = []
-  
+
   for (const keyword of EMERGENCY_KEYWORDS) {
     if (lowerText.includes(keyword)) {
       foundKeywords.push(keyword)
     }
   }
-  
+
   if (foundKeywords.length === 0) {
     return { isEmergency: false, type: '', keywords: [] }
   }
-  
+
   let type = 'general'
   if (foundKeywords.some(k => ['تحرش', 'اغتصاب', 'هتك', 'جنسي'].some(t => k.includes(t)))) {
     type = 'sexual_assault'
@@ -63,7 +77,7 @@ function detectEmergency(text: string): { isEmergency: boolean; type: string; ke
   } else if (foundKeywords.some(k => ['حبس', 'منع', 'حرم'].some(t => k.includes(t)))) {
     type = 'restriction'
   }
-  
+
   return { isEmergency: true, type, keywords: foundKeywords }
 }
 
@@ -99,19 +113,20 @@ const SYSTEM_PROMPT = `أنت NOLEX، المساعد القانوني الذكي
 // ─────────────────────────────────────────────────────────────
 // System Prompt لتحليل الاستشارات
 // ─────────────────────────────────────────────────────────────
-const getConsultationAnalysisPrompt = (userProfile: any) => {
-  const genderRaw = (userProfile?.gender || '').toLowerCase()
+const getConsultationAnalysisPrompt = (userProfile: Record<string, unknown> | undefined) => {
+  const genderRaw = (String(userProfile?.gender || '')).toLowerCase()
   const isFemale = genderRaw === 'female' || genderRaw === 'أنثى' || genderRaw === 'انثى' || genderRaw === 'f'
-  
-  const firstName = userProfile?.full_name?.split(' ')[0] || 'صديقي'
-  const nationality = userProfile?.nationality || 'سعودي'
-  
-  const dialectStyle = nationality === 'SA' || nationality === 'سعودي' 
-    ? 'استخدم لهجة سعودية بسيطة وودودة' 
+
+  const fullName = String(userProfile?.full_name || '')
+  const firstName = fullName.split(' ')[0] || 'صديقي'
+  const nationality = String(userProfile?.nationality || 'سعودي')
+
+  const dialectStyle = nationality === 'SA' || nationality === 'سعودي'
+    ? 'استخدم لهجة سعودية بسيطة وودودة'
     : 'استخدم لغة عربية فصحى بسيطة وواضحة'
-  
-  const genderAddress = isFemale 
-    ? 'خاطبها بصيغة المؤنث (أختي، عزيزتي، حقوقكِ، لكِ)' 
+
+  const genderAddress = isFemale
+    ? 'خاطبها بصيغة المؤنث (أختي، عزيزتي، حقوقكِ، لكِ)'
     : 'خاطبه بصيغة المذكر (أخي، عزيزي، حقوقك، لك)'
 
   return `أنت NOLEX، المستشار القانوني الذكي والصديق الشخصي للمشترك في منصة ExoLex.
@@ -148,15 +163,16 @@ const getConsultationAnalysisPrompt = (userProfile: any) => {
 // ─────────────────────────────────────────────────────────────
 // System Prompt للطوارئ
 // ─────────────────────────────────────────────────────────────
-const getEmergencyPrompt = (userProfile: any, emergencyType: string) => {
-  const genderRaw = (userProfile?.gender || '').toLowerCase()
+const getEmergencyPrompt = (userProfile: Record<string, unknown> | undefined, emergencyType: string) => {
+  const genderRaw = (String(userProfile?.gender || '')).toLowerCase()
   const isFemale = genderRaw === 'female' || genderRaw === 'أنثى' || genderRaw === 'انثى' || genderRaw === 'f'
-  
-  const firstName = userProfile?.full_name?.split(' ')[0] || 'صديقي'
+
+  const fullName = String(userProfile?.full_name || '')
+  const firstName = fullName.split(' ')[0] || 'صديقي'
   const genderSuffix = isFemale ? 'ي' : ''
-  
+
   let emergencyGuidance = ''
-  
+
   switch (emergencyType) {
     case 'sexual_assault':
       emergencyGuidance = `📞 اتصل${genderSuffix} الآن: الشرطة 911 | خط الحماية 1919`
@@ -197,28 +213,84 @@ ${emergencyGuidance}
 // معالجة الطلب
 // ─────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
-  try {
-    const { question, mode, context, conversationHistory } = await request.json()
+  const ctx = createRequestContext(request)
 
-    if (!question) {
-      return NextResponse.json({ error: 'السؤال مطلوب' }, { status: 400 })
+  try {
+    // Check authentication (user should be logged in)
+    const user = getUserFromHeaders(request)
+    if (!user.userId) {
+      logger.security(ctx, 'Unauthenticated chat request')
+      return NextResponse.json(
+        { success: false, error: 'يجب تسجيل الدخول للمتابعة', requestId: ctx.requestId },
+        { status: 401 }
+      )
     }
+
+    // Rate limiting - 30 requests per user per minute
+    const rateLimit = chatRateLimiter.check(user.userId)
+    if (!rateLimit.success) {
+      logger.security(ctx, 'Chat rate limit exceeded', { userId: user.userId })
+      return rateLimitResponse(rateLimit)
+    }
+
+    // Parse request body
+    let body: Record<string, unknown>
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'طلب غير صالح', requestId: ctx.requestId },
+        { status: 400 }
+      )
+    }
+
+    // Validate input
+    const validation = validateBody(body, CHAT_REQUEST_SCHEMA)
+    if (!validation.valid) {
+      logger.security(ctx, 'Invalid chat request', { errors: validation.errors })
+      return NextResponse.json(
+        { success: false, error: 'بيانات غير صالحة', details: validation.errors, requestId: ctx.requestId },
+        { status: 400 }
+      )
+    }
+
+    // Sanitize question
+    const question = sanitizeString(body.question)
+    if (!question) {
+      return NextResponse.json(
+        { success: false, error: 'السؤال مطلوب', requestId: ctx.requestId },
+        { status: 400 }
+      )
+    }
+
+    // Check for XSS attempts
+    if (containsXSS(question)) {
+      logger.security(ctx, 'XSS attempt in chat', { userId: user.userId })
+      return NextResponse.json(
+        { success: false, error: 'محتوى غير مسموح', requestId: ctx.requestId },
+        { status: 400 }
+      )
+    }
+
+    const mode = validation.sanitized.mode as string | undefined
+    const context = body.context as Record<string, unknown> | undefined
+    const conversationHistory = body.conversationHistory as Array<{ role: string; content: string }> | undefined
 
     // كشف طلب محامي
     const wantsLawyer = detectLawyerRequest(question)
-    
+
     // كشف الحالات الطارئة
     const emergency = detectEmergency(question)
-    
+
     // تحديد System Prompt
     let systemPrompt = SYSTEM_PROMPT
     let isEmergencyMode = false
-    
+
     if (emergency.isEmergency) {
-      systemPrompt = getEmergencyPrompt(context?.userProfile, emergency.type)
+      systemPrompt = getEmergencyPrompt(context?.userProfile as Record<string, unknown> | undefined, emergency.type)
       isEmergencyMode = true
     } else if (mode === 'consultation_analysis' || mode === 'consultation') {
-      systemPrompt = getConsultationAnalysisPrompt(context?.userProfile)
+      systemPrompt = getConsultationAnalysisPrompt(context?.userProfile as Record<string, unknown> | undefined)
     }
 
     // بناء الرسائل
@@ -229,12 +301,16 @@ export async function POST(request: NextRequest) {
     // 🔴 إضافة تاريخ المحادثة السابقة (مهم جداً!)
     if (conversationHistory && Array.isArray(conversationHistory) && conversationHistory.length > 0) {
       const recentHistory = conversationHistory.slice(-10) // آخر 10 رسائل
-      
+
       for (const msg of recentHistory) {
-        if (msg.role === 'user') {
-          messages.push({ role: 'user', content: msg.content })
-        } else if (msg.role === 'assistant') {
-          messages.push({ role: 'assistant', content: msg.content })
+        // Sanitize historical messages
+        const content = sanitizeString(msg.content)
+        if (content && !containsXSS(content)) {
+          if (msg.role === 'user') {
+            messages.push({ role: 'user', content })
+          } else if (msg.role === 'assistant') {
+            messages.push({ role: 'assistant', content })
+          }
         }
       }
     }
@@ -243,9 +319,9 @@ export async function POST(request: NextRequest) {
     if (context && (mode === 'consultation_analysis' || isEmergencyMode) && !conversationHistory?.length) {
       const contextMessage = `
 ## 📋 تفاصيل الطلب:
-- المجال: ${context.category || 'غير محدد'}
-- الفرع: ${context.subcategory || 'غير محدد'}
-- العنوان: ${context.title || 'غير محدد'}
+- المجال: ${sanitizeString(context.category) || 'غير محدد'}
+- الفرع: ${sanitizeString(context.subcategory) || 'غير محدد'}
+- العنوان: ${sanitizeString(context.title) || 'غير محدد'}
 
 ## 📝 التفاصيل:
 ${question}
@@ -261,17 +337,20 @@ ${isEmergencyMode ? 'حالة طارئة. قدم الدعم الفوري.' : 'ح
       model: 'gpt-4o-mini',
       messages,
       temperature: isEmergencyMode ? 0.3 : 0.5,
-      max_tokens: isEmergencyMode ? 2500 : 2500,
+      max_tokens: 2500,
     })
 
     let answer = completion.choices[0]?.message?.content || 'لم أتمكن من الإجابة'
-    
+
     const isOutOfScope = answer.startsWith('OUT_OF_SCOPE:')
     if (isOutOfScope) {
       answer = answer.replace('OUT_OF_SCOPE:', '').trim()
     }
 
+    logger.info('Chat completed', { userId: user.userId, tokens: completion.usage?.total_tokens })
+
     return NextResponse.json({
+      success: true,
       answer,
       isOutOfScope,
       isEmergency: emergency.isEmergency,
@@ -279,16 +358,23 @@ ${isEmergencyMode ? 'حالة طارئة. قدم الدعم الفوري.' : 'ح
       wantsLawyer,
       model: completion.model,
       tokens: completion.usage?.total_tokens || 0,
-      mode: isEmergencyMode ? 'emergency' : (mode || 'normal')
+      mode: isEmergencyMode ? 'emergency' : (mode || 'normal'),
+      requestId: ctx.requestId
     })
 
-  } catch (error: any) {
-    console.error('OpenAI Error:', error)
-    
-    if (error?.code === 'insufficient_quota') {
-      return NextResponse.json({ error: 'انتهى رصيد OpenAI API' }, { status: 402 })
+  } catch (error) {
+    logger.error(ctx, error instanceof Error ? error : new Error(String(error)))
+
+    if (error instanceof Error && 'code' in error && error.code === 'insufficient_quota') {
+      return NextResponse.json(
+        { success: false, error: 'انتهى رصيد OpenAI API', requestId: ctx.requestId },
+        { status: 402 }
+      )
     }
 
-    return NextResponse.json({ error: 'حدث خطأ في معالجة السؤال' }, { status: 500 })
+    return NextResponse.json(
+      { success: false, error: 'حدث خطأ في معالجة السؤال', requestId: ctx.requestId },
+      { status: 500 }
+    )
   }
 }
