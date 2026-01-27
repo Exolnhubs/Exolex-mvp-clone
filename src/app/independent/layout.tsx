@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Clock, CheckCircle, Send, RefreshCw } from 'lucide-react'
 import QuoteFormModal, { QuoteFormData } from '@/components/QuoteFormModal'
+import { logoutLawyer } from '@/lib/auth'
 const menuItems = [
   { id: 'dashboard', label: 'لوحة التحكم', icon: '🏠', href: '/independent' },
   { id: 'my-tasks', label: 'مهامي', icon: '📋', href: '/independent/my-tasks' },
@@ -195,7 +196,7 @@ export default function IndependentLayout({ children }: { children: React.ReactN
         </nav>
 
         <div className="p-4 border-t border-slate-700">
-          <button className="w-full py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm transition">🚪 تسجيل الخروج</button>
+          <button onClick={logoutLawyer} className="w-full py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm transition">🚪 تسجيل الخروج</button>
         </div>
       </aside>
 

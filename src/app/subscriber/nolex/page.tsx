@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logoutMember } from '@/lib/auth'
 import Sidebar from '@/components/layout/Sidebar'
 import Image from 'next/image'
 import toast from 'react-hot-toast'
@@ -123,8 +124,7 @@ export default function NolexPage() {
   }, [messages])
 
   const handleLogout = () => {
-    localStorage.removeItem('exolex_user_id')
-    router.push('/auth/login')
+    logoutMember()
   }
 
   const purchasePackage = async (pkg: QuotaPackage) => {

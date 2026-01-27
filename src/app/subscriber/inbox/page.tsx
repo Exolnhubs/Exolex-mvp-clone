@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logoutMember } from '@/lib/auth'
 import Sidebar from '@/components/layout/Sidebar'
 import toast from 'react-hot-toast'
 
@@ -306,8 +307,7 @@ export default function CommunicationCenterPage() {
   // ═══════════════════════════════════════════════════════════════
   
   const handleLogout = () => {
-    localStorage.removeItem('exolex_user_id')
-    router.push('/auth/login')
+    logoutMember()
   }
 
   // إرسال رسالة للمحامي

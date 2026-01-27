@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logoutMember } from '@/lib/auth'
 import Sidebar from '@/components/layout/Sidebar'
 import UnifiedCalendar from '@/components/calendar/UnifiedCalendar'
 
@@ -59,9 +60,7 @@ export default function SubscriberCalendarPage() {
   }, [router])
 
   const handleLogout = () => {
-    localStorage.removeItem('exolex_user_id')
-    localStorage.removeItem('exolex_phone')
-    router.push('/auth/login')
+    logoutMember()
   }
 
   if (loading) {

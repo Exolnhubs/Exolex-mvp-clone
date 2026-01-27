@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, 
-  LayoutDashboard, Users, Building2, Shield, Briefcase, 
+import { Calendar,
+  LayoutDashboard, Users, Building2, Shield, Briefcase,
   FileText, Scale, UserCircle, Receipt, FileSignature,
   Wrench, Wallet, BarChart3, Settings, Bell, FolderOpen,
   Menu, X, LogOut, ChevronDown, Gavel, Network
 } from 'lucide-react'
+import { logoutLegalArm } from '@/lib/auth'
 
 // ═══════════════════════════════════════════════════════════════
 // ⚖️ Layout الذراع القانوني
@@ -122,7 +123,7 @@ export default function LegalArmLayout({ children }: { children: React.ReactNode
           ))}
         </nav>
         <div className="p-3 border-t border-purple-700">
-          <button onClick={() => { localStorage.removeItem('exolex_arm_id'); router.push('/auth/legal-arm-login') }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400 hover:bg-red-500/10 ${!isSidebarOpen && !isMobile ? 'justify-center' : ''}`}>
+          <button onClick={logoutLegalArm} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400 hover:bg-red-500/10 ${!isSidebarOpen && !isMobile ? 'justify-center' : ''}`}>
             <LogOut className="w-5 h-5" />{(isSidebarOpen || isMobile) && <span className="text-sm">تسجيل الخروج</span>}
           </button>
         </div>
