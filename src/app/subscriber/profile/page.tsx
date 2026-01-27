@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logoutMember } from '@/lib/auth'
 import Sidebar from '@/components/layout/Sidebar'
 import toast from 'react-hot-toast'
 
@@ -168,8 +169,7 @@ export default function ProfilePage() {
   }, [otpTimer])
 
   const handleLogout = () => {
-    localStorage.removeItem('exolex_user_id')
-    router.push('/auth/login')
+    logoutMember()
   }
 
   const handleSaveProfile = async () => {

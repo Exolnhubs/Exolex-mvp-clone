@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logoutMember } from '@/lib/auth'
 import Sidebar from '@/components/layout/Sidebar'
 
 // ═══════════════════════════════════════════════════════════════
@@ -186,9 +187,7 @@ export default function RequestsPage() {
   }, [router])
 
   const handleLogout = () => {
-    localStorage.removeItem('exolex_user_id')
-    localStorage.removeItem('exolex_phone')
-    router.push('/auth/login')
+    logoutMember()
   }
 
   // تصفية الطلبات

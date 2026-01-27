@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, 
-  LayoutDashboard, Users, Building2, Briefcase, Shield, 
+import { Calendar,
+  LayoutDashboard, Users, Building2, Briefcase, Shield,
   FileText, Scale, UserCircle, Receipt, FileSignature,
   Wrench, Wallet, BarChart3, Settings, Bell, FolderOpen,
   Menu, X, LogOut, ChevronDown, Building, Network
 } from 'lucide-react'
+import { logoutPartner } from '@/lib/auth'
 
 // ═══════════════════════════════════════════════════════════════
 // 🏢 Layout الشريك القانوني
@@ -120,7 +121,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
           ))}
         </nav>
         <div className="p-3 border-t border-slate-700">
-          <button onClick={() => { localStorage.removeItem('exolex_partner_id'); router.push('/auth/partner-login') }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400 hover:bg-red-500/10 ${!isSidebarOpen && !isMobile ? 'justify-center' : ''}`}>
+          <button onClick={logoutPartner} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400 hover:bg-red-500/10 ${!isSidebarOpen && !isMobile ? 'justify-center' : ''}`}>
             <LogOut className="w-5 h-5" />{(isSidebarOpen || isMobile) && <span className="text-sm">تسجيل الخروج</span>}
           </button>
         </div>
