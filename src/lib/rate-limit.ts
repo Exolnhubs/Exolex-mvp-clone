@@ -1,7 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // Rate Limiting Utility
-// In-memory rate limiter for API protection
-// For production, consider using Redis or Upstash
+// Supports both in-memory (development) and Upstash Redis (production)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -16,11 +15,8 @@ interface RateLimitEntry {
 }
 
 interface RateLimitConfig {
-  // Maximum number of requests
   limit: number
-  // Time window in seconds
-  window: number
-  // Unique identifier for this limiter
+  window: number // seconds
   identifier: string
 }
 
@@ -32,22 +28,67 @@ interface RateLimitResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// In-Memory Store
-// Note: This resets on server restart. Use Redis for production.
+// Configuration
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const rateLimitStore = new Map<string, RateLimitEntry>()
+const USE_REDIS = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN)
 
-// Clean up expired entries periodically
-setInterval(() => {
-  const now = Date.now()
-  const entries = Array.from(rateLimitStore.entries())
-  for (const [key, entry] of entries) {
-    if (entry.resetAt < now) {
-      rateLimitStore.delete(key)
+// ═══════════════════════════════════════════════════════════════════════════════
+// In-Memory Store (Development/Fallback)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const memoryStore = new Map<string, RateLimitEntry>()
+
+// Clean up expired entries periodically (only in non-edge environments)
+if (typeof setInterval !== 'undefined') {
+  setInterval(() => {
+    const now = Date.now()
+    const entries = Array.from(memoryStore.entries())
+    for (const [key, entry] of entries) {
+      if (entry.resetAt < now) {
+        memoryStore.delete(key)
+      }
     }
+  }, 60000)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Upstash Redis Client (Production)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface RedisResponse {
+  result: number | null
+}
+
+async function redisCommand(command: string[]): Promise<number | null> {
+  if (!USE_REDIS) return null
+
+  try {
+    const response = await fetch(
+      `${process.env.UPSTASH_REDIS_REST_URL}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(command),
+        cache: 'no-store',
+      }
+    )
+
+    if (!response.ok) {
+      console.error('Redis error:', response.statusText)
+      return null
+    }
+
+    const data: RedisResponse = await response.json()
+    return data.result
+  } catch (error) {
+    console.error('Redis connection error:', error)
+    return null
   }
-}, 60000) // Clean every minute
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Core Rate Limiter
@@ -55,27 +96,51 @@ setInterval(() => {
 
 /**
  * Check and update rate limit for a given key
+ * Uses Redis in production, memory in development
  */
-export function checkRateLimit(key: string, config: RateLimitConfig): RateLimitResult {
+export async function checkRateLimitAsync(key: string, config: RateLimitConfig): Promise<RateLimitResult> {
   const now = Date.now()
   const windowMs = config.window * 1000
-  const fullKey = `${config.identifier}:${key}`
+  const fullKey = `ratelimit:${config.identifier}:${key}`
 
-  let entry = rateLimitStore.get(fullKey)
+  // Try Redis first in production
+  if (USE_REDIS) {
+    try {
+      // Use Redis INCR with EXPIRE for atomic rate limiting
+      const count = await redisCommand(['INCR', fullKey])
 
-  // Create new entry or reset expired one
-  if (!entry || entry.resetAt < now) {
-    entry = {
-      count: 0,
-      resetAt: now + windowMs,
+      if (count === 1) {
+        // First request in window, set expiry
+        await redisCommand(['EXPIRE', fullKey, config.window.toString()])
+      }
+
+      const ttl = await redisCommand(['TTL', fullKey])
+      const resetAt = now + ((ttl || config.window) * 1000)
+      const remaining = Math.max(0, config.limit - (count || 0))
+      const success = (count || 0) <= config.limit
+
+      return {
+        success,
+        remaining,
+        resetAt,
+        retryAfter: success ? undefined : Math.ceil((ttl || config.window)),
+      }
+    } catch (error) {
+      // Fall through to memory store on Redis error
+      console.error('Redis rate limit error, falling back to memory:', error)
     }
   }
 
-  // Increment count
-  entry.count++
-  rateLimitStore.set(fullKey, entry)
+  // Fallback to in-memory store
+  let entry = memoryStore.get(fullKey)
 
-  // Check if over limit
+  if (!entry || entry.resetAt < now) {
+    entry = { count: 0, resetAt: now + windowMs }
+  }
+
+  entry.count++
+  memoryStore.set(fullKey, entry)
+
   const remaining = Math.max(0, config.limit - entry.count)
   const success = entry.count <= config.limit
 
@@ -88,15 +153,42 @@ export function checkRateLimit(key: string, config: RateLimitConfig): RateLimitR
 }
 
 /**
- * Get client identifier from request (IP or user ID)
+ * Synchronous rate limit check (uses memory store only)
+ * For backward compatibility with existing code
+ */
+export function checkRateLimit(key: string, config: RateLimitConfig): RateLimitResult {
+  const now = Date.now()
+  const windowMs = config.window * 1000
+  const fullKey = `ratelimit:${config.identifier}:${key}`
+
+  let entry = memoryStore.get(fullKey)
+
+  if (!entry || entry.resetAt < now) {
+    entry = { count: 0, resetAt: now + windowMs }
+  }
+
+  entry.count++
+  memoryStore.set(fullKey, entry)
+
+  const remaining = Math.max(0, config.limit - entry.count)
+  const success = entry.count <= config.limit
+
+  return {
+    success,
+    remaining,
+    resetAt: entry.resetAt,
+    retryAfter: success ? undefined : Math.ceil((entry.resetAt - now) / 1000),
+  }
+}
+
+/**
+ * Get client identifier from request
  */
 export function getClientIdentifier(request: NextRequest, userId?: string): string {
-  // Prefer user ID if authenticated
   if (userId) {
     return `user:${userId}`
   }
 
-  // Fall back to IP address
   const forwarded = request.headers.get('x-forwarded-for')
   const ip = forwarded ? forwarded.split(',')[0].trim() : 'unknown'
   return `ip:${ip}`
@@ -106,98 +198,66 @@ export function getClientIdentifier(request: NextRequest, userId?: string): stri
 // Pre-configured Rate Limiters
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * OTP rate limiter - very strict
- * 3 requests per phone per hour
- */
 export const otpRateLimiter = {
-  config: {
-    limit: 3,
-    window: 3600, // 1 hour
-    identifier: 'otp',
-  },
-
+  config: { limit: 3, window: 3600, identifier: 'otp' },
   check(phone: string): RateLimitResult {
     return checkRateLimit(phone, this.config)
   },
+  async checkAsync(phone: string): Promise<RateLimitResult> {
+    return checkRateLimitAsync(phone, this.config)
+  },
 }
 
-/**
- * OTP verification rate limiter
- * 5 attempts per phone per 10 minutes
- */
 export const otpVerifyRateLimiter = {
-  config: {
-    limit: 5,
-    window: 600, // 10 minutes
-    identifier: 'otp-verify',
-  },
-
+  config: { limit: 5, window: 600, identifier: 'otp-verify' },
   check(phone: string): RateLimitResult {
     return checkRateLimit(phone, this.config)
   },
+  async checkAsync(phone: string): Promise<RateLimitResult> {
+    return checkRateLimitAsync(phone, this.config)
+  },
 }
 
-/**
- * Chat/AI rate limiter
- * 30 requests per user per minute
- */
 export const chatRateLimiter = {
-  config: {
-    limit: 30,
-    window: 60, // 1 minute
-    identifier: 'chat',
-  },
-
+  config: { limit: 30, window: 60, identifier: 'chat' },
   check(identifier: string): RateLimitResult {
     return checkRateLimit(identifier, this.config)
   },
+  async checkAsync(identifier: string): Promise<RateLimitResult> {
+    return checkRateLimitAsync(identifier, this.config)
+  },
 }
 
-/**
- * General API rate limiter
- * 100 requests per user per minute
- */
 export const apiRateLimiter = {
-  config: {
-    limit: 100,
-    window: 60, // 1 minute
-    identifier: 'api',
-  },
-
+  config: { limit: 100, window: 60, identifier: 'api' },
   check(identifier: string): RateLimitResult {
     return checkRateLimit(identifier, this.config)
   },
+  async checkAsync(identifier: string): Promise<RateLimitResult> {
+    return checkRateLimitAsync(identifier, this.config)
+  },
 }
 
-/**
- * Strict rate limiter for sensitive operations
- * 10 requests per user per hour
- */
 export const strictRateLimiter = {
-  config: {
-    limit: 10,
-    window: 3600, // 1 hour
-    identifier: 'strict',
-  },
-
+  config: { limit: 10, window: 3600, identifier: 'strict' },
   check(identifier: string): RateLimitResult {
     return checkRateLimit(identifier, this.config)
+  },
+  async checkAsync(identifier: string): Promise<RateLimitResult> {
+    return checkRateLimitAsync(identifier, this.config)
   },
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Middleware Helper
+// Response Helpers
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Create rate limit response with proper headers
- */
 export function rateLimitResponse(result: RateLimitResult): NextResponse {
   const response = NextResponse.json(
     {
       success: false,
-      error: 'Too many requests. Please try again later.',
+      error: 'طلبات كثيرة. حاول مرة أخرى لاحقاً.',
+      error_en: 'Too many requests. Please try again later.',
       retryAfter: result.retryAfter,
     },
     { status: 429 }
@@ -212,99 +272,129 @@ export function rateLimitResponse(result: RateLimitResult): NextResponse {
   return response
 }
 
-/**
- * Add rate limit headers to successful response
- */
 export function addRateLimitHeaders(response: NextResponse, result: RateLimitResult): void {
   response.headers.set('X-RateLimit-Remaining', result.remaining.toString())
   response.headers.set('X-RateLimit-Reset', result.resetAt.toString())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Rate Limit Wrapper for API Routes
+// API Route Wrapper
 // ═══════════════════════════════════════════════════════════════════════════════
 
 type ApiHandler = (request: NextRequest) => Promise<NextResponse>
 
-/**
- * Wrap an API handler with rate limiting
- *
- * @example
- * export const POST = withRateLimit(
- *   async (request) => {
- *     // Your handler logic
- *     return NextResponse.json({ success: true })
- *   },
- *   { limit: 10, window: 60, identifier: 'my-endpoint' }
- * )
- */
 export function withRateLimit(
   handler: ApiHandler,
   config: RateLimitConfig,
   getKey?: (request: NextRequest) => string
 ): ApiHandler {
   return async (request: NextRequest) => {
-    // Get rate limit key
     const key = getKey
       ? getKey(request)
       : getClientIdentifier(request, request.headers.get('x-user-id') || undefined)
 
-    // Check rate limit
-    const result = checkRateLimit(key, config)
+    const result = await checkRateLimitAsync(key, config)
 
     if (!result.success) {
       return rateLimitResponse(result)
     }
 
-    // Call handler
     const response = await handler(request)
-
-    // Add rate limit headers to response
     addRateLimitHeaders(response, result)
-
     return response
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Phone-based Rate Limiting (for OTP)
+// Phone Blocking (for OTP abuse prevention)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if phone is rate limited for OTP
- */
-export function isPhoneRateLimited(phone: string): RateLimitResult {
-  return otpRateLimiter.check(phone)
-}
-
-/**
- * Check if phone is rate limited for OTP verification
- */
-export function isVerifyRateLimited(phone: string): RateLimitResult {
-  return otpVerifyRateLimiter.check(phone)
-}
-
-/**
- * Block a phone temporarily (e.g., after too many failed attempts)
- */
-export function blockPhone(phone: string, durationSeconds: number): void {
+export async function blockPhoneAsync(phone: string, durationSeconds: number): Promise<void> {
   const key = `blocked:${phone}`
-  rateLimitStore.set(key, {
+
+  if (USE_REDIS) {
+    try {
+      await redisCommand(['SET', key, '1', 'EX', durationSeconds.toString()])
+      return
+    } catch (error) {
+      console.error('Redis block error:', error)
+    }
+  }
+
+  // Fallback to memory
+  memoryStore.set(key, {
     count: 999999,
     resetAt: Date.now() + (durationSeconds * 1000),
   })
 }
 
-/**
- * Check if a phone is blocked
- */
-export function isPhoneBlocked(phone: string): boolean {
+export function blockPhone(phone: string, durationSeconds: number): void {
   const key = `blocked:${phone}`
-  const entry = rateLimitStore.get(key)
+  memoryStore.set(key, {
+    count: 999999,
+    resetAt: Date.now() + (durationSeconds * 1000),
+  })
+
+  // Also try to set in Redis (fire and forget)
+  if (USE_REDIS) {
+    redisCommand(['SET', key, '1', 'EX', durationSeconds.toString()]).catch(() => {})
+  }
+}
+
+export async function isPhoneBlockedAsync(phone: string): Promise<boolean> {
+  const key = `blocked:${phone}`
+
+  if (USE_REDIS) {
+    try {
+      const exists = await redisCommand(['EXISTS', key])
+      if (exists === 1) return true
+    } catch (error) {
+      console.error('Redis check error:', error)
+    }
+  }
+
+  // Check memory store
+  const entry = memoryStore.get(key)
   if (!entry) return false
   if (entry.resetAt < Date.now()) {
-    rateLimitStore.delete(key)
+    memoryStore.delete(key)
     return false
   }
   return true
+}
+
+export function isPhoneBlocked(phone: string): boolean {
+  const key = `blocked:${phone}`
+  const entry = memoryStore.get(key)
+  if (!entry) return false
+  if (entry.resetAt < Date.now()) {
+    memoryStore.delete(key)
+    return false
+  }
+  return true
+}
+
+// Legacy exports for backward compatibility
+export function isPhoneRateLimited(phone: string): RateLimitResult {
+  return otpRateLimiter.check(phone)
+}
+
+export function isVerifyRateLimited(phone: string): RateLimitResult {
+  return otpVerifyRateLimiter.check(phone)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Health Check
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function getRateLimitHealth(): {
+  mode: 'redis' | 'memory'
+  memoryEntries: number
+  redisConfigured: boolean
+} {
+  return {
+    mode: USE_REDIS ? 'redis' : 'memory',
+    memoryEntries: memoryStore.size,
+    redisConfigured: USE_REDIS,
+  }
 }

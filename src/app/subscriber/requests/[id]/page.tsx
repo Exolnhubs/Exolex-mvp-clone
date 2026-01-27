@@ -411,7 +411,6 @@ export default function SubscriberRequestDetailsPage() {
         
         if (responseData) {
           setLawyerResponse(responseData)
-          console.log('📋 الرد النهائي:', responseData)
         }
 
         // جلب الملفات المرفقة
@@ -424,7 +423,6 @@ export default function SubscriberRequestDetailsPage() {
         
         if (filesData) {
           setRequestFiles(filesData)
-          console.log('📁 الملفات:', filesData)
         }
 
         // التحقق من حالة الاطلاع
@@ -493,8 +491,8 @@ export default function SubscriberRequestDetailsPage() {
           action_url: `/independent/my-tasks/${requestId}`,
           is_read: false
         })
-      } catch (notifError) {
-        console.log('Notification error (non-critical):', notifError)
+      } catch {
+        // Non-critical: notification creation failed
       }
 
       toast.success('✅ تم قبول العرض بنجاح!')

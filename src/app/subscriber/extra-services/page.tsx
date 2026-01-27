@@ -135,10 +135,6 @@ export default function ExtraServicesPage() {
 
   // فتح النموذج
   const openServiceModal = (service: ExtraService) => {
-    console.log('Service clicked:', service)
-    console.log('pricing_type:', service.pricing_type)
-    console.log('price:', service.price)
-    
     // الخدمات المسعّرة تذهب لصفحة الدفع مباشرة
     if (service.pricing_type === 'fixed' && service.price && service.price > 0) {
       router.push("/subscriber/extra-services/checkout/" + service.id)

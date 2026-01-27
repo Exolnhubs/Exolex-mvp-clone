@@ -141,8 +141,7 @@ export default function LegalArmCompleteProfilePage() {
 
       if (otpError) throw otpError
 
-      console.log('📧 رمز التحقق للبريد:', otpCode)
-      toast.success(`تم إرسال رمز التحقق للبريد (للتجربة: ${otpCode})`)
+      toast.success('تم إرسال رمز التحقق للبريد')
       setEmailOtpSent(true)
       
     } catch (error: any) {

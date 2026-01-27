@@ -18,7 +18,7 @@ const supabase = createClient(
 const OTP_VERIFY_SCHEMA = {
   phone: { required: true, type: 'string' as const },
   code: { required: true, type: 'string' as const, minLength: 6, maxLength: 6, pattern: /^[0-9]{6}$/ },
-  purpose: { type: 'string' as const, enum: ['login', 'register', 'verify', 'legal_arm_invite'] as const },
+  purpose: { type: 'string' as const, enum: ['login', 'register', 'verify', 'legal_arm_invite', 'lawyer_login', 'legal_arm_login', 'partner_login'] as const },
 }
 
 export async function POST(request: NextRequest) {

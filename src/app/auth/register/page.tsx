@@ -194,10 +194,7 @@ function RegisterContent() {
   const sendOTP = async () => {
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
     setGeneratedOtp(otpCode)
-    
-    // For development: show OTP
-    console.log('🔐 OTP Code:', otpCode)
-    
+
     if (otpMethod === 'email') {
       toast.success('تم إرسال رمز التحقق إلى بريدك الإلكتروني')
     } else {
