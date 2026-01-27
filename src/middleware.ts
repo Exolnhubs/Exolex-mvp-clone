@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════════
-// Next.js Middleware - Authentication & Authorization
+// Next.js Middleware - Authentication, Authorization, Logging & Security
 // Runs on every request before reaching the page/API
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -12,6 +12,23 @@ import {
   type UserRole,
   type SessionData
 } from '@/lib/supabase-server'
+import {
+  logger,
+  createRequestContext,
+  addRequestIdHeader,
+  shouldLogRequest,
+  recordMetrics,
+  type RequestContext
+} from '@/lib/logger'
+import {
+  isPreflight,
+  handlePreflight,
+  addCorsHeaders,
+  addSecurityHeaders,
+  routeNeedsCors,
+  defaultCorsConfig
+} from '@/lib/cors'
+import { recordError } from '@/lib/error-tracker'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Transition Mode: Support both cookie-based and localStorage-based auth
@@ -94,10 +111,26 @@ function isStaticAsset(pathname: string): boolean {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const startTime = Date.now()
 
   // Skip static assets and Next.js internals
   if (isStaticAsset(pathname)) {
     return NextResponse.next()
+  }
+
+  // Create request context for logging
+  const ctx = createRequestContext(request)
+
+  // Log incoming request
+  if (shouldLogRequest(pathname)) {
+    logger.request(ctx)
+  }
+
+  // Handle CORS preflight requests
+  if (isPreflight(request) && routeNeedsCors(pathname)) {
+    const response = handlePreflight(request, defaultCorsConfig)
+    logResponse(ctx, response.status, startTime)
+    return response
   }
 
   // Get session from secure cookie
@@ -132,18 +165,27 @@ export async function middleware(request: NextRequest) {
   if (isProtectedRoute(pathname)) {
     // Not authenticated -> redirect to login
     if (!isAuthenticated) {
+      logger.security(ctx, 'Unauthenticated access attempt', { route: pathname })
       const loginUrl = getLoginUrlForRoute(pathname)
       const url = request.nextUrl.clone()
       url.pathname = loginUrl
       url.searchParams.set('redirect', pathname)
-      return NextResponse.redirect(url)
+      const response = NextResponse.redirect(url)
+      logResponse(ctx, 302, startTime)
+      return addRequestIdHeader(response, ctx.requestId)
     }
 
     // Authenticated but wrong role -> redirect to correct portal
     if (!canAccessRoute(session.userType, pathname)) {
+      logger.security(ctx, 'Wrong role access attempt', {
+        route: pathname,
+        userRole: session.userType,
+      })
       const url = request.nextUrl.clone()
       url.pathname = getDefaultRedirectForRole(session.userType)
-      return NextResponse.redirect(url)
+      const response = NextResponse.redirect(url)
+      logResponse(ctx, 302, startTime)
+      return addRequestIdHeader(response, ctx.requestId)
     }
 
     // Profile not complete -> redirect to complete profile
@@ -154,7 +196,9 @@ export async function middleware(request: NextRequest) {
     }
 
     // All checks passed
-    return NextResponse.next()
+    const response = NextResponse.next()
+    logResponse(ctx, 200, startTime)
+    return addSecurityHeaders(addRequestIdHeader(response, ctx.requestId))
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -165,10 +209,14 @@ export async function middleware(request: NextRequest) {
     if (isAuthenticated) {
       const url = request.nextUrl.clone()
       url.pathname = getDefaultRedirectForRole(session.userType)
-      return NextResponse.redirect(url)
+      const response = NextResponse.redirect(url)
+      logResponse(ctx, 302, startTime)
+      return addRequestIdHeader(response, ctx.requestId)
     }
 
-    return NextResponse.next()
+    const response = NextResponse.next()
+    logResponse(ctx, 200, startTime)
+    return addSecurityHeaders(addRequestIdHeader(response, ctx.requestId))
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -176,32 +224,69 @@ export async function middleware(request: NextRequest) {
   // ─────────────────────────────────────────────────────────────
   if (isProtectedApiRoute(pathname)) {
     if (!isAuthenticated) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized - Please login' },
+      logger.security(ctx, 'Unauthenticated API access', { route: pathname })
+      recordError()
+      const response = NextResponse.json(
+        { success: false, error: 'Unauthorized - Please login', requestId: ctx.requestId },
         { status: 401 }
       )
+      logResponse(ctx, 401, startTime)
+      return addRequestIdHeader(response, ctx.requestId)
     }
 
     // Add user info to request headers for API routes
     const requestHeaders = new Headers(request.headers)
     requestHeaders.set('x-user-id', session.userId)
     requestHeaders.set('x-user-type', session.userType)
+    requestHeaders.set('x-request-id', ctx.requestId)
     if (session.memberId) requestHeaders.set('x-member-id', session.memberId)
     if (session.lawyerId) requestHeaders.set('x-lawyer-id', session.lawyerId)
     if (session.partnerId) requestHeaders.set('x-partner-id', session.partnerId)
     if (session.legalArmId) requestHeaders.set('x-legal-arm-id', session.legalArmId)
 
-    return NextResponse.next({
+    // Update context with user info for logging
+    ctx.userId = session.userId
+    ctx.userType = session.userType
+
+    let response = NextResponse.next({
       request: {
         headers: requestHeaders,
       },
     })
+
+    // Add CORS headers if needed
+    if (routeNeedsCors(pathname)) {
+      response = addCorsHeaders(response, request)
+    }
+
+    logResponse(ctx, 200, startTime)
+    return addSecurityHeaders(addRequestIdHeader(response, ctx.requestId))
   }
 
   // ─────────────────────────────────────────────────────────────
   // Public Routes - Allow through
   // ─────────────────────────────────────────────────────────────
-  return NextResponse.next()
+  let response = NextResponse.next()
+
+  // Add CORS headers for public API routes
+  if (routeNeedsCors(pathname)) {
+    response = addCorsHeaders(response, request)
+  }
+
+  logResponse(ctx, 200, startTime)
+  return addSecurityHeaders(addRequestIdHeader(response, ctx.requestId))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Logging Helper
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function logResponse(ctx: RequestContext, statusCode: number, startTime: number): void {
+  if (!shouldLogRequest(ctx.path)) return
+
+  const duration = Date.now() - startTime
+  logger.response(ctx, statusCode)
+  recordMetrics(duration, statusCode >= 400)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
