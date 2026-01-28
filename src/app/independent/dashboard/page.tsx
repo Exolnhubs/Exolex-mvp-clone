@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { getLawyerId } from '@/lib/cookies'
 import toast from 'react-hot-toast'
 
 export default function IndependentDashboardPage() {
@@ -39,7 +40,7 @@ export default function IndependentDashboardPage() {
 
   const loadDashboardData = async () => {
     try {
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const lawyerId = getLawyerId()
       if (!lawyerId) { router.push('/auth/lawyer-login'); return }
 
       const { data: lawyerData } = await supabase.from('lawyers').select('*').eq('id', lawyerId).single()
@@ -89,7 +90,7 @@ export default function IndependentDashboardPage() {
   const toggleAvailability = async () => {
     const newStatus = !isAvailable
     setIsAvailable(newStatus)
-    const lawyerId = localStorage.getItem('exolex_lawyer_id')
+    const lawyerId = getLawyerId()
     if (lawyerId) {
       await supabase.from('lawyers').update({ is_available: newStatus }).eq('id', lawyerId)
       toast.success(newStatus ? '✅ أنت الآن متاح' : '⏸️ أنت الآن غير متاح')

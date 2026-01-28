@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
-// API: Set Authentication Cookies (httpOnly)
-// Server-side cookie setting for security - prevents XSS access to auth tokens
-// Includes database ownership verification to prevent privilege escalation
+// API: Set Authentication Cookies
+// Server-side cookie setting with database ownership verification
+// User IDs are readable (for client JS) but verified server-side for security
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -19,9 +19,10 @@ const supabase = createClient(
 // Valid user types
 const VALID_USER_TYPES = ['member', 'lawyer', 'partner', 'partner_employee', 'legal_arm']
 
-// Cookie configuration
+// Cookie configuration - readable by JS (user IDs are not secrets)
+// Security comes from server-side verification, not hiding values
 const cookieOptions = {
-  httpOnly: true,
+  httpOnly: false, // Allow JS to read (needed for client-side routing)
   secure: IS_PRODUCTION,
   sameSite: 'lax' as const,
   path: '/',

@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { 
+import { getPartnerId } from '@/lib/cookies'
+import {
   Users, FileText, Scale, Wallet, TrendingUp, TrendingDown,
   Clock, AlertTriangle, CheckCircle, XCircle, Star, Calendar,
   ArrowLeft, Building2, Briefcase, Award
@@ -43,10 +44,10 @@ export default function PartnerDashboardPage() {
 
   const loadData = async () => {
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
       if (!partnerId) {
-        // router.push('/auth/partner-login')
-        // return
+        router.push('/auth/partner-login')
+        return
       }
 
       // بيانات الشريك
