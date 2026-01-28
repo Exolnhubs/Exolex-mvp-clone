@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logoutMember } from '@/lib/auth'
+import { getUserId } from '@/lib/cookies'
 import Sidebar from '@/components/layout/Sidebar'
 import toast from 'react-hot-toast'
 
@@ -80,7 +81,7 @@ export default function ExtraServicesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
-    const userId = localStorage.getItem('exolex_user_id')
+    const userId = getUserId()
     if (!userId) { router.push('/auth/login'); return }
 
     const fetchData = async () => {

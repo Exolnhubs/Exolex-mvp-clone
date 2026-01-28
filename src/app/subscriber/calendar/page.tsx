@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logoutMember } from '@/lib/auth'
+import { getUserId } from '@/lib/cookies'
 import Sidebar from '@/components/layout/Sidebar'
 import UnifiedCalendar from '@/components/calendar/UnifiedCalendar'
 
@@ -16,7 +17,7 @@ export default function SubscriberCalendarPage() {
 
   useEffect(() => {
     const loadUser = async () => {
-      const userId = localStorage.getItem('exolex_user_id')
+      const userId = getUserId()
       
       if (!userId || userId === 'null' || userId === 'undefined') {
         router.push('/auth/login')

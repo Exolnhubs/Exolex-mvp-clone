@@ -10,6 +10,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { getUserId } from '@/lib/cookies'
 import toast from 'react-hot-toast'
 import {
   ArrowRight, Clock, User, FileText, Calendar,
@@ -279,7 +280,7 @@ export default function SubscriberRequestDetailsPage() {
 
   const loadData = async () => {
     try {
-      const userId = localStorage.getItem('exolex_user_id')
+      const userId = getUserId()
       if (!userId) { router.push('/auth/login'); return }
 
       // جلب معلومات المشترك
