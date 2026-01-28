@@ -6,6 +6,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { createHmac, timingSafeEqual } from 'crypto'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -93,11 +94,14 @@ export function createSupabaseMiddlewareClient(request: NextRequest) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Session Management
+// Session Management - JWT-like tokens with HMAC-SHA256 signing
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const SESSION_COOKIE_NAME = 'exolex_session'
 const SESSION_EXPIRY_DAYS = 7
+
+// Secret key for signing sessions - MUST be set in production
+const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-in-production-min-32-chars'
 
 export interface SessionData {
   userId: string
@@ -109,32 +113,97 @@ export interface SessionData {
   lawyerId?: string
   partnerId?: string
   legalArmId?: string
+  // Session metadata
+  issuedAt?: number
 }
 
 /**
- * Create a secure session after successful OTP verification
+ * Create HMAC-SHA256 signature for session data
  */
-export function createSession(data: Omit<SessionData, 'expiresAt'>): string {
+function signSession(payload: string): string {
+  return createHmac('sha256', SESSION_SECRET)
+    .update(payload)
+    .digest('base64url')
+}
+
+/**
+ * Verify HMAC signature using timing-safe comparison
+ */
+function verifySignature(payload: string, signature: string): boolean {
+  const expectedSignature = signSession(payload)
+
+  // Convert to buffers for timing-safe comparison
+  const sigBuffer = Buffer.from(signature)
+  const expectedBuffer = Buffer.from(expectedSignature)
+
+  // Signatures must be same length for timing-safe comparison
+  if (sigBuffer.length !== expectedBuffer.length) {
+    return false
+  }
+
+  return timingSafeEqual(sigBuffer, expectedBuffer)
+}
+
+/**
+ * Create a secure signed session token after successful authentication
+ * Format: base64url(payload).signature
+ */
+export function createSession(data: Omit<SessionData, 'expiresAt' | 'issuedAt'>): string {
   const session: SessionData = {
     ...data,
-    expiresAt: Date.now() + (SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+    expiresAt: Date.now() + (SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000),
+    issuedAt: Date.now()
   }
-  // Base64 encode the session (in production, use proper encryption)
-  return Buffer.from(JSON.stringify(session)).toString('base64')
+
+  // Encode payload as base64url
+  const payload = Buffer.from(JSON.stringify(session)).toString('base64url')
+
+  // Create signature
+  const signature = signSession(payload)
+
+  // Return token in format: payload.signature
+  return `${payload}.${signature}`
 }
 
 /**
- * Parse and validate session from cookie
+ * Parse and validate signed session token
+ * Returns null if token is invalid, tampered with, or expired
  */
 export function parseSession(sessionToken: string | undefined): SessionData | null {
   if (!sessionToken) return null
 
   try {
-    const decoded = Buffer.from(sessionToken, 'base64').toString('utf-8')
+    // Split token into payload and signature
+    const parts = sessionToken.split('.')
+    if (parts.length !== 2) {
+      return null
+    }
+
+    const [payload, signature] = parts
+
+    // Verify signature FIRST (before parsing payload)
+    if (!verifySignature(payload, signature)) {
+      // Signature mismatch - token has been tampered with
+      return null
+    }
+
+    // Decode and parse payload
+    const decoded = Buffer.from(payload, 'base64url').toString('utf-8')
     const session: SessionData = JSON.parse(decoded)
+
+    // Validate required fields
+    if (!session.userId || !session.userType || !session.expiresAt) {
+      return null
+    }
 
     // Check expiry
     if (session.expiresAt < Date.now()) {
+      return null
+    }
+
+    // Validate userType is a known role
+    const validRoles: UserRole[] = ['member', 'lawyer', 'partner', 'partner_employee', 'legal_arm', 'admin', 'staff']
+    if (!validRoles.includes(session.userType)) {
       return null
     }
 

@@ -177,10 +177,7 @@ export default function PartnerLoginPage() {
         metadata: { license_number: licenseNumber }
       })
 
-      // حفظ بيانات الجلسة
-      localStorage.setItem('exolex_partner_id', partnerData.id)
-      localStorage.setItem('exolex_partner_name', partnerData.company_name_ar)
-      localStorage.setItem('exolex_user_type', 'partner')
+      // Set httpOnly cookies via server API
       await setPartnerAuthCookies(partnerData.id)
 
       toast.success(`مرحباً بك - ${partnerData.company_name_ar}`)

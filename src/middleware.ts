@@ -31,10 +31,10 @@ import {
 import { recordError } from '@/lib/error-tracker'
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Transition Mode: Support both cookie-based and localStorage-based auth
-// Set to false once fully migrated to cookie-based auth
+// Transition Mode: DISABLED - All auth now uses httpOnly cookies only
+// localStorage-based auth has been fully removed for security
 // ═══════════════════════════════════════════════════════════════════════════════
-const TRANSITION_MODE = true
+const TRANSITION_MODE = false
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Route Configuration

@@ -129,16 +129,12 @@ export default function LoginPage() {
           .single()
 
         if (!existingUser.is_profile_complete) {
-          localStorage.setItem('exolex_user_id', existingUser.id)
-          localStorage.setItem('exolex_phone', fullPhone)
           await setMemberAuthCookies(existingUser.id, memberData?.id)
-          // Use full page redirect to ensure cookies are sent
-          window.location.href = '/auth/complete-profile'
+          // Pass user ID via URL for profile completion
+          window.location.href = `/auth/complete-profile?uid=${existingUser.id}`
         } else {
-          localStorage.setItem('exolex_user_id', existingUser.id)
           await setMemberAuthCookies(existingUser.id, memberData?.id)
           toast.success('تم تسجيل الدخول بنجاح')
-          // Use full page redirect to ensure middleware sees the new cookies
           window.location.href = redirectUrl
         }
       } else {
@@ -159,11 +155,9 @@ export default function LoginPage() {
 
         if (createError) throw createError
 
-        localStorage.setItem('exolex_user_id', newUser.id)
-        localStorage.setItem('exolex_phone', fullPhone)
         await setMemberAuthCookies(newUser.id)
-        // Use full page redirect to ensure cookies are sent
-        window.location.href = '/auth/complete-profile'
+        // Pass user ID via URL for profile completion
+        window.location.href = `/auth/complete-profile?uid=${newUser.id}`
       }
 
     } catch (error: any) {
