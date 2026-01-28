@@ -239,6 +239,7 @@ export async function POST(request: NextRequest) {
         }
         if (body.legalArmId) {
           response.cookies.set('exolex_arm_id', body.legalArmId, cookieOptions)
+          response.cookies.set('exolex_legal_arm_id', body.legalArmId, cookieOptions)
         }
         break
 
@@ -260,6 +261,7 @@ export async function POST(request: NextRequest) {
       case 'legal_arm':
         if (body.legalArmId) {
           response.cookies.set('exolex_arm_id', body.legalArmId, cookieOptions)
+          response.cookies.set('exolex_legal_arm_id', body.legalArmId, cookieOptions)
         }
         break
     }

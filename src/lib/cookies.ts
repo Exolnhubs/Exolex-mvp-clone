@@ -11,61 +11,63 @@ export function getCookie(name: string): string | null {
 
   const cookies = document.cookie.split(';')
   for (const cookie of cookies) {
-    const [cookieName, cookieValue] = cookie.trim().split('=')
+    const [cookieName, ...rest] = cookie.trim().split('=')
     if (cookieName === name) {
-      return decodeURIComponent(cookieValue)
+      return decodeURIComponent(rest.join('='))
     }
   }
   return null
 }
 
 /**
- * Get the current user ID from cookies
+ * Delete a cookie by name (client-side)
  */
+export function deleteCookie(name: string): void {
+  if (typeof document === 'undefined') return
+  document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Auth Cookie Getters
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export function getUserId(): string | null {
   return getCookie('exolex_user_id')
 }
 
-/**
- * Get the current user type from cookies
- */
 export function getUserType(): string | null {
   return getCookie('exolex_user_type')
 }
 
-/**
- * Get the current member ID from cookies
- */
 export function getMemberId(): string | null {
   return getCookie('exolex_member_id')
 }
 
-/**
- * Get the current lawyer ID from cookies
- */
 export function getLawyerId(): string | null {
   return getCookie('exolex_lawyer_id')
 }
 
-/**
- * Get the current partner ID from cookies
- */
 export function getPartnerId(): string | null {
   return getCookie('exolex_partner_id')
 }
 
-/**
- * Get the current employee ID from cookies
- */
 export function getEmployeeId(): string | null {
   return getCookie('exolex_employee_id')
 }
 
 /**
- * Get the current legal arm ID from cookies
+ * Get legal arm ID - checks both cookie names for compatibility
+ * (some pages used exolex_arm_id, others used exolex_legal_arm_id)
  */
 export function getLegalArmId(): string | null {
-  return getCookie('exolex_arm_id')
+  return getCookie('exolex_arm_id') || getCookie('exolex_legal_arm_id')
+}
+
+/**
+ * Get lawyer display name from cookie (may be null if not set)
+ */
+export function getLawyerName(): string | null {
+  return getCookie('exolex_lawyer_name')
 }
 
 /**

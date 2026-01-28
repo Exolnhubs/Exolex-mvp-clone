@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Clock, FileText, CheckCircle, Send, AlertCircle, Search, RefreshCw, Eye, X, Download, Coins, Flag, FileIcon, User, ArrowRight } from 'lucide-react'
 import QuoteFormModal, { QuoteFormData } from '@/components/QuoteFormModal'
+import { getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 منصة الطلبات الموحدة - الخدمات الإضافية
@@ -55,7 +56,7 @@ export default function MarketplaceRequestsPage() {
   // ═══════════════════════════════════════════════════════════════
   useEffect(() => {
     const checkLawyerAndSetReturnPath = async () => {
-      const id = localStorage.getItem('exolex_lawyer_id')
+      const id = getLawyerId()
       if (id) {
         setLawyerId(id)
         
@@ -129,7 +130,7 @@ export default function MarketplaceRequestsPage() {
   const handleRefresh = async () => { setRefreshing(true); await fetchRequests(); setRefreshing(false) }
 
   const handleAcceptRequest = async (request: ServiceRequest) => {
-    const currentLawyerId = lawyerId || localStorage.getItem('exolex_lawyer_id')
+    const currentLawyerId = lawyerId || getLawyerId()
     if (!currentLawyerId) { alert('الرجاء تسجيل الدخول أولاً'); return }
     if (!confirm('هل أنت متأكد من قبول هذا الطلب؟')) return
     
@@ -161,7 +162,7 @@ export default function MarketplaceRequestsPage() {
   // إرسال عرض السعر - متوافق مع أعمدة قاعدة البيانات
   // ═══════════════════════════════════════════════════════════════
   const handleSubmitQuote = async (formData: QuoteFormData) => {
-    const currentLawyerId = lawyerId || localStorage.getItem('exolex_lawyer_id')
+    const currentLawyerId = lawyerId || getLawyerId()
     if (!currentLawyerId) { alert('الرجاء تسجيل الدخول أولاً'); return }
     if (!selectedRequest) return
     
