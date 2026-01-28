@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { getUserId } from '@/lib/cookies'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 
@@ -52,7 +53,7 @@ export default function CheckoutPage() {
   const totalAmount = basePrice + vatAmount
 
   useEffect(() => {
-    const userId = localStorage.getItem('exolex_user_id')
+    const userId = getUserId()
     if (!userId) {
       router.push('/auth/login')
       return

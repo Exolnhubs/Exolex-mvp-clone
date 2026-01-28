@@ -3,10 +3,12 @@
 // Shared functions for login/logout across all portals
 // ═══════════════════════════════════════════════════════════════════════════════
 
+import { deleteCookie } from '@/lib/cookies'
+
 /**
- * All auth-related localStorage keys used in the system
+ * All auth-related cookie keys used in the system
  */
-const AUTH_STORAGE_KEYS = [
+const AUTH_COOKIE_KEYS = [
   'exolex_user_id',
   'exolex_user_type',
   'exolex_phone',
@@ -24,11 +26,11 @@ const AUTH_STORAGE_KEYS = [
 ]
 
 /**
- * Clear all authentication data from localStorage
+ * Clear all authentication cookies (client-side)
  */
 export function clearAuthStorage(): void {
-  AUTH_STORAGE_KEYS.forEach(key => {
-    localStorage.removeItem(key)
+  AUTH_COOKIE_KEYS.forEach(key => {
+    deleteCookie(key)
   })
 }
 
@@ -51,7 +53,7 @@ export async function logout(redirectTo: string = '/auth/login'): Promise<void> 
   // Clear all cookies via server API
   await clearAuthCookies()
 
-  // Clear all localStorage
+  // Clear all client-side auth cookies
   clearAuthStorage()
 
   // Full page redirect to ensure clean state

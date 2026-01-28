@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logoutLegalArm } from '@/lib/auth'
 import toast from 'react-hot-toast'
+import { getLegalArmId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // ⚙️ صفحة الإعدادات - الذراع القانوني
@@ -108,7 +109,7 @@ export default function SettingsPage() {
   })
 
   useEffect(() => {
-    const id = localStorage.getItem('exolex_legal_arm_id')
+    const id = getLegalArmId()
     if (!id) {
       router.push('/auth/legal-arm-login')
       return

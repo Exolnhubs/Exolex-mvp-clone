@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // ⚖️ صفحة القضايا - محامي الذراع القانوني
@@ -27,7 +28,7 @@ export default function CasesPage() {
 
   const loadData = async () => {
     try {
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const lawyerId = getLawyerId()
       if (!lawyerId) { router.push('/auth/lawyer-login'); return }
 
       // التحقق من نوع المحامي

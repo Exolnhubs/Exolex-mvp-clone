@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 📨 صفحة العروض - المحامي المستقل
@@ -35,7 +36,7 @@ export default function IndependentOffersPage() {
 
   const loadData = async () => {
     try {
-      const id = localStorage.getItem('exolex_lawyer_id')
+      const id = getLawyerId()
       if (!id) {
         router.push('/auth/lawyer-login')
         return

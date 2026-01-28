@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLawyerId } from '@/lib/cookies'
 import { FileText, Download, TrendingUp, TrendingDown, Calendar, Filter, CheckCircle, Package } from 'lucide-react'
 
 // ═══════════════════════════════════════════════════════════════
@@ -60,7 +61,7 @@ export default function ReportsPage() {
 
   const loadData = async () => {
     try {
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const lawyerId = getLawyerId()
       if (!lawyerId) { router.push('/auth/lawyer-login'); return }
 
       // ═══════════════════════════════════════════════════════════

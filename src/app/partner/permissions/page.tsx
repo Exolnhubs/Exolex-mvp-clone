@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getPartnerId } from '@/lib/cookies'
 import { 
   Shield, Plus, Edit, Trash2, X, Users,
   Check, Lock, Unlock, Copy, ChevronDown, ChevronUp,
@@ -53,7 +54,7 @@ export default function PermissionsPage() {
 
   const loadData = async () => {
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
 
       // الأدوار الافتراضية
       const { data: refRolesData } = await supabase
@@ -142,7 +143,7 @@ export default function PermissionsPage() {
   // حفظ الدور
   const handleSaveRole = async () => {
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
       if (!partnerId) return
 
       if (!roleForm.code || !roleForm.name_ar) {

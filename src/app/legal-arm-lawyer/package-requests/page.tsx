@@ -9,6 +9,7 @@ import {
   ArrowLeft, AlertCircle, FileText, Bell, Inbox
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { getLawyerId, getLegalArmId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة طلبات الباقات - محامي الذراع القانوني
@@ -48,8 +49,8 @@ export default function PackageRequestsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('available')
 
   useEffect(() => {
-    const id = localStorage.getItem('exolex_lawyer_id')
-    const armId = localStorage.getItem('exolex_legal_arm_id')
+    const id = getLawyerId()
+    const armId = getLegalArmId()
     if (!id) {
       router.push('/auth/lawyer-login')
       return

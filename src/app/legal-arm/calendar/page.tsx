@@ -8,6 +8,7 @@ import {
   Briefcase, Gavel, Link2, User, CheckSquare, Square, Filter
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { getLegalArmId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -108,7 +109,7 @@ export default function ArmCalendarPage() {
   // Load Data
   // ═══════════════════════════════════════════════════════════════════════════════
   useEffect(() => {
-    const id = localStorage.getItem('exolex_arm_id')
+    const id = getLegalArmId()
     if (id) {
       setArmId(id)
       loadArmInfo(id)

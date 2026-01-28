@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getPartnerId } from '@/lib/cookies'
 import { 
   Building2, Plus, Edit, Trash2, X,
   CheckCircle, XCircle
@@ -26,7 +27,7 @@ export default function DepartmentsPage() {
 
   const loadData = async () => {
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
 
       const { data: refDepts } = await supabase
         .from('ref_departments')
@@ -58,7 +59,7 @@ export default function DepartmentsPage() {
     e.preventDefault()
     
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
       if (!partnerId) {
         toast.error('يرجى تسجيل الدخول')
         return

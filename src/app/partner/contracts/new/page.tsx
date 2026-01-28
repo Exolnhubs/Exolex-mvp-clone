@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { FileSignature, ArrowRight, ArrowLeft, Save, Send, X, Loader2, User, Users, FileText, Calendar, DollarSign, ListChecks, CheckCircle, Plus, Trash2, Bot, Upload, Copy } from 'lucide-react'
+import { getPartnerId } from '@/lib/cookies'
 
 interface ContractForm {
   title: string
@@ -96,7 +97,7 @@ export default function NewContractPage() {
   const loadInitialData = async () => {
     try {
       setIsLoading(true)
-      const id = localStorage.getItem('exolex_partner_id')
+      const id = getPartnerId()
       if (!id) { toast.error('يرجى تسجيل الدخول'); router.push('/auth/partner-login'); return }
       setPartnerId(id)
 

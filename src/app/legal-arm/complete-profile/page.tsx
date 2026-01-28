@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
+import { getLegalArmId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة إكمال بيانات الذراع القانوني
@@ -53,7 +54,7 @@ export default function LegalArmCompleteProfilePage() {
   // ─────────────────────────────────────────────────────────────
   
   useEffect(() => {
-    const armId = localStorage.getItem('exolex_legal_arm_id')
+    const armId = getLegalArmId()
     if (!armId) {
       toast.error('يرجى تسجيل الدخول أولاً')
       router.push('/auth/legal-arm-login')
@@ -384,9 +385,7 @@ export default function LegalArmCompleteProfilePage() {
       })
 
       // تحديث localStorage
-      localStorage.setItem('exolex_legal_arm_name', nameAr)
-
-      toast.success('تم حفظ البيانات بنجاح!')
+toast.success('تم حفظ البيانات بنجاح!')
       
       // التوجيه للوحة التحكم مع رسالة
       toast('⚠️ حسابكم قيد المراجعة، سيتم إشعاركم عند التنشيط', { duration: 5000 })

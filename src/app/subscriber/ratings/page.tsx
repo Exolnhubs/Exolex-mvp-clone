@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { clearAuthCookies } from '@/lib/auth'
+import { getUserId } from '@/lib/cookies'
 import Sidebar from '@/components/layout/Sidebar'
 import toast from 'react-hot-toast'
 import { Star, MessageCircle, Calendar, FileText, User, ArrowRight } from 'lucide-react'
@@ -44,7 +46,7 @@ export default function MyRatingsPage() {
 
   const loadData = async () => {
     try {
-      const userId = localStorage.getItem('exolex_user_id')
+      const userId = getUserId()
       if (!userId) { router.push('/auth/login'); return }
 
       // جلب member_id
@@ -95,7 +97,7 @@ export default function MyRatingsPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex">
         <Sidebar isSubscribed={true} userName="مشترك" onLogout={() => {
-          localStorage.clear()
+          clearAuthCookies()
           router.push('/auth/login')
         }} />
         <main className="flex-1 mr-64 p-8">
@@ -113,7 +115,7 @@ export default function MyRatingsPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex">
       <Sidebar isSubscribed={true} userName="مشترك" onLogout={() => {
-        localStorage.clear()
+        clearAuthCookies()
         router.push('/auth/login')
       }} />
       

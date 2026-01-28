@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLegalArmId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 🏢 الهيكل التنظيمي للذراع القانوني
@@ -77,7 +78,7 @@ export default function LegalArmOrganizationPage() {
   // تحميل البيانات
   // ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    const armId = localStorage.getItem('exolex_legal_arm_id')
+    const armId = getLegalArmId()
     setLegalArmId(armId)
 
     if (armId) {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getPartnerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 💰 صفحة الأرباح - الشريك القانوني
@@ -35,7 +36,7 @@ export default function PartnerEarningsPage() {
 
   const loadData = async () => {
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
       if (!partnerId) { 
         router.push('/auth/partner-login')
         return 

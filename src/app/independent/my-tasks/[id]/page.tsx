@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📋 صفحة معالجة الطلب الكاملة - ExoLex
@@ -263,7 +264,7 @@ const [processingPoa, setProcessingPoa] = useState(false)
       setIsLoading(true)
       
       // Get lawyer info
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const lawyerId = getLawyerId()
       if (!lawyerId) {
         router.push('/auth/lawyer-login')
         return

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { getLawyerId } from '@/lib/cookies'
 import UnifiedCalendar from '@/components/calendar/UnifiedCalendar'
 
 // ═══════════════════════════════════════════════════════════════
@@ -18,7 +19,7 @@ export default function ArmLawyerCalendarPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const id = localStorage.getItem('exolex_lawyer_id')
+    const id = getLawyerId()
     if (id) {
       setLawyerId(id)
       loadLawyerInfo(id)

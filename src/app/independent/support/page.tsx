@@ -8,6 +8,7 @@ import {
   ChevronLeft, Search, Filter
 } from 'lucide-react'
 import Link from 'next/link'
+import { getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -69,7 +70,7 @@ export default function InboxPage() {
   // Load Data
   // ═══════════════════════════════════════════════════════════════════════════════
   useEffect(() => {
-    const id = localStorage.getItem('exolex_lawyer_id')
+    const id = getLawyerId()
     if (id) {
       setLawyerId(id)
       loadData(id)

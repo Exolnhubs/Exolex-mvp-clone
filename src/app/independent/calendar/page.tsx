@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import UnifiedCalendar from '@/components/calendar/UnifiedCalendar'
+import { getLawyerId } from '@/lib/cookies'
 
 export default function IndependentCalendarPage() {
   const [lawyerId, setLawyerId] = useState<string | null>(null)
@@ -10,7 +11,7 @@ export default function IndependentCalendarPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const id = localStorage.getItem('exolex_lawyer_id')
+    const id = getLawyerId()
     if (id) {
       setLawyerId(id)
       loadLawyerInfo(id)

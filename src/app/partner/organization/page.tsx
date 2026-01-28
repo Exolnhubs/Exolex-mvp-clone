@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getPartnerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 🏢 الهيكل التنظيمي للشريك القانوني
@@ -85,7 +86,7 @@ export default function PartnerOrganizationPage() {
   // تحميل البيانات
   // ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    const pId = localStorage.getItem('exolex_partner_id')
+    const pId = getPartnerId()
     setPartnerId(pId)
 
     if (pId) {

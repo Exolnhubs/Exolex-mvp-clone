@@ -9,6 +9,7 @@ import {
   Building2, User, Loader2, FileSignature, Send, DollarSign,
   AlertCircle, Filter
 } from 'lucide-react'
+import { getPartnerId, getLegalArmId, getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📋 صفحة العروض الموحدة - الشريك / الذراع / المحامي المستقل
@@ -72,9 +73,9 @@ export default function QuotesPage() {
     try {
       setIsLoading(true)
       
-      const partnerId = localStorage.getItem('exolex_partner_id')
-      const legalArmId = localStorage.getItem('exolex_legal_arm_id')
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const partnerId = getPartnerId()
+      const legalArmId = getLegalArmId()
+      const lawyerId = getLawyerId()
       
       let id: string | null = null
       let type: UserType = 'partner'

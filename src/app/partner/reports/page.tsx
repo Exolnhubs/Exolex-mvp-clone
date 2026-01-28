@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLegalArmId, getPartnerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 📊 صفحة التقارير الشاملة - الشريك / الذراع القانوني
@@ -136,8 +137,8 @@ export default function ReportsPage() {
   const loadData = async () => {
     try {
       setIsLoading(true)
-      const partnerId = localStorage.getItem('exolex_partner_id')
-      const legalArmId = localStorage.getItem('exolex_legal_arm_id')
+      const partnerId = getPartnerId()
+      const legalArmId = getLegalArmId()
 
       let type: UserType = 'partner'
       let id: string | null = null

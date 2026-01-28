@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logoutPartner } from '@/lib/auth'
 import toast from 'react-hot-toast'
+import { getPartnerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // ⚙️ صفحة الإعدادات - الشريك القانوني
@@ -113,7 +114,7 @@ export default function SettingsPage() {
   })
 
   useEffect(() => {
-    const id = localStorage.getItem('exolex_partner_id')
+    const id = getPartnerId()
     if (!id) {
       router.push('/auth/partner-login')
       return

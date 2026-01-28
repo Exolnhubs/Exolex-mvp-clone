@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLawyerId } from '@/lib/cookies'
 import {
   ArrowRight, Clock, User, FileText, Calendar, MessageSquare,
   Send, Paperclip, Bot, Search, Timer, Check, X,
@@ -103,7 +104,7 @@ export default function IndependentRequestDetailsPage() {
 
   const loadData = async () => {
     try {
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const lawyerId = getLawyerId()
       if (!lawyerId) {
         router.push('/auth/lawyer-login')
         return

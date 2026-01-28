@@ -10,6 +10,7 @@ import {
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import QuoteFormModal, { QuoteFormData } from '@/components/QuoteFormModal'
+import { getLawyerId, getLawyerName } from '@/lib/cookies'
 
 interface Stats {
   myTasks: number
@@ -92,8 +93,8 @@ export default function IndependentDashboard() {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    const id = localStorage.getItem('exolex_lawyer_id')
-    const name = localStorage.getItem('exolex_lawyer_name')
+    const id = getLawyerId()
+    const name = getLawyerName()
     if (id) setLawyerId(id)
     if (name) setLawyerName(name)
     fetchData(id)

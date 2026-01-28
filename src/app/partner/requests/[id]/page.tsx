@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '../../../../lib/supabase'
 // Commented out due to missing module/type declaration
 import toast from 'react-hot-toast'
+import { getEmployeeId, getPartnerId } from '@/lib/cookies'
 import {
   ArrowRight, Clock, User, FileText, Calendar, MessageSquare,
   Users, Send, Paperclip, Bot, Search, Timer, Plus, Check, X,
@@ -147,8 +148,8 @@ export default function PartnerRequestDetailsPage() {
 
   const loadData = async () => {
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
-      const empId = localStorage.getItem('exolex_employee_id')
+      const partnerId = getPartnerId()
+      const empId = getEmployeeId()
       if (!partnerId || !empId) {
         router.push('/auth/partner-login')
         return

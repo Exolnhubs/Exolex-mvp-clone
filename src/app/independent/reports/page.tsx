@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { FileText, Download, TrendingUp, TrendingDown, Calendar, Filter } from 'lucide-react'
+import { getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 📊 صفحة التقارير - المحامي المستقل
@@ -49,7 +50,7 @@ export default function ReportsPage() {
 
   const loadData = async () => {
     try {
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const lawyerId = getLawyerId()
       if (!lawyerId) { router.push('/auth/lawyer-login'); return }
 
       const { start, end } = getPeriodDates()

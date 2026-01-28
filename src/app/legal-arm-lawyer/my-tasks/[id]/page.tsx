@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📋 صفحة معالجة الطلب الكاملة - محامي الذراع القانوني
@@ -271,7 +272,7 @@ export default function ArmLawyerRequestProcessingPage() {
       // ═══════════════════════════════════════════════════════════════
       // 🔑 استخدام exolex_lawyer_id (من صفحة lawyer-login)
       // ═══════════════════════════════════════════════════════════════
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const lawyerId = getLawyerId()
       if (!lawyerId) {
         router.push('/auth/lawyer-login')
         return

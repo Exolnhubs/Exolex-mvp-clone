@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { getLawyerId, getLegalArmId } from '@/lib/cookies'
-import { logoutLawyer } from '@/lib/auth'
+import { logoutLawyer, clearAuthCookies } from '@/lib/auth'
 import QuoteFormModal, { QuoteFormData } from '@/components/QuoteFormModal'
 import { X, User, Clock, Flag, Send, CheckCircle, Eye, Download, FileText as FileIcon, Coins } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -84,7 +84,7 @@ const [submitting, setSubmitting] = useState(false)
           .single()
 
         if (lawyerError || !lawyer || lawyer.status !== 'active') {
-          localStorage.clear()
+          await clearAuthCookies()
           router.push('/auth/lawyer-login')
           return
         }

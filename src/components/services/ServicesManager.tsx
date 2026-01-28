@@ -8,6 +8,7 @@ import {
   DollarSign, Clock, ToggleLeft, ToggleRight, FileText, Scale, Copy,
   Loader2, Save, CheckSquare, Square, Briefcase
 } from 'lucide-react'
+import { getCookie } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // أنواع البيانات (Types)
@@ -141,7 +142,7 @@ export default function ServicesManager({ providerType }: ServicesManagerProps) 
   const loadInitialData = async () => {
     try {
       setIsLoading(true)
-      const id = localStorage.getItem(getProviderIdKey())
+      const id = getCookie(getProviderIdKey())
       setProviderId(id)
 
       const { data: categoriesData } = await supabase

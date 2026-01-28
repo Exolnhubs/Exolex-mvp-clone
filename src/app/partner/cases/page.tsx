@@ -9,6 +9,7 @@ import {
   Gavel, Building2, User, Briefcase, TrendingUp
 } from 'lucide-react'
 import Link from 'next/link'
+import { getPartnerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // ⚖️ إدارة القضايا - الشريك القانوني
@@ -60,7 +61,7 @@ export default function PartnerCasesPage() {
 
   const loadData = async () => {
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
       if (!partnerId) return
 
       // جلب القضايا مع العلاقات
