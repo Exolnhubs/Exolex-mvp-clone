@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
-import { setAuthCookies } from '@/lib/auth'
+import { setLawyerAuthCookies, setPartnerEmployeeAuthCookies } from '@/lib/auth'
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة دخول المحامين
@@ -263,29 +263,18 @@ const accData: AccountData = {
         // محامي (ذراع أو مستقل)
         if (accountData.legal_arm_id) {
           // محامي ذراع قانوني
-          await setAuthCookies({
-            lawyerId: accountData.id,
-            userType: 'lawyer',
-            legalArmId: accountData.legal_arm_id
-          })
+          await setLawyerAuthCookies(accountData.id, accountData.legal_arm_id)
           toast.success(`مرحباً ${accountData.full_name}`)
           window.location.href = redirectUrl || '/legal-arm-lawyer/dashboard'
         } else {
           // محامي مستقل
-          await setAuthCookies({
-            lawyerId: accountData.id,
-            userType: 'lawyer'
-          })
+          await setLawyerAuthCookies(accountData.id)
           toast.success(`مرحباً ${accountData.full_name}`)
           window.location.href = redirectUrl || '/independent/dashboard'
         }
       } else {
         // محامي شريك
-        await setAuthCookies({
-          employeeId: accountData.id,
-          userType: 'partner_employee',
-          partnerId: accountData.partner_id
-        })
+        await setPartnerEmployeeAuthCookies(accountData.id, accountData.partner_id)
         toast.success(`مرحباً ${accountData.full_name}`)
         window.location.href = redirectUrl || '/partner-employee/dashboard'
       }
