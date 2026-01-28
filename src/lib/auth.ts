@@ -103,19 +103,21 @@ interface SetCookiesParams {
 }
 
 /**
- * Set authentication cookies via server API (httpOnly)
+ * Set authentication cookies via server API
+ * Throws on failure so login pages can display the error
  */
-async function setAuthCookiesViaAPI(params: SetCookiesParams): Promise<boolean> {
-  try {
-    const response = await fetch('/api/auth/set-cookies', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    })
-    return response.ok
-  } catch (error) {
-    console.error('Failed to set auth cookies:', error)
-    return false
+async function setAuthCookiesViaAPI(params: SetCookiesParams): Promise<void> {
+  const response = await fetch('/api/auth/set-cookies', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    const errorMsg = data?.error || `Cookie setting failed (${response.status})`
+    console.error('set-cookies API error:', response.status, data)
+    throw new Error(errorMsg)
   }
 }
 
