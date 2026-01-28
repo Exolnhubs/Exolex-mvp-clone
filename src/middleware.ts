@@ -31,12 +31,6 @@ import {
 import { recordError } from '@/lib/error-tracker'
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Transition Mode: DISABLED - All auth now uses httpOnly cookies only
-// localStorage-based auth has been fully removed for security
-// ═══════════════════════════════════════════════════════════════════════════════
-const TRANSITION_MODE = false
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // Route Configuration
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -133,25 +127,27 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  // Get session from secure cookie
+  // Get session from secure signed cookie (primary auth)
   let session = getSessionFromRequest(request)
 
-  // TRANSITION MODE: Also check for localStorage-based auth via cookie fallback
-  // This allows existing localStorage auth to work during migration
-  if (TRANSITION_MODE && !session) {
-    const legacyUserId = request.cookies.get('exolex_user_id')?.value
-    const legacyUserType = request.cookies.get('exolex_user_type')?.value as UserRole | undefined
+  // Fallback: Read from individual auth cookies
+  // The signed session (exolex_session) uses Node.js crypto (createHmac)
+  // which may not be available in Edge Runtime where middleware runs.
+  // Individual cookies are set by /api/auth/set-cookies with DB ownership
+  // verification, providing server-side security.
+  if (!session) {
+    const cookieUserId = request.cookies.get('exolex_user_id')?.value
+    const cookieUserType = request.cookies.get('exolex_user_type')?.value as UserRole | undefined
 
-    if (legacyUserId) {
-      // Create a temporary session from legacy auth
+    if (cookieUserId && cookieUserType) {
       session = {
-        userId: legacyUserId,
-        userType: legacyUserType || 'member',
+        userId: cookieUserId,
+        userType: cookieUserType,
         phone: '',
         expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000), // 7 days
-        memberId: legacyUserType === 'member' ? request.cookies.get('exolex_member_id')?.value : undefined,
-        lawyerId: legacyUserType === 'lawyer' ? request.cookies.get('exolex_lawyer_id')?.value : undefined,
-        partnerId: legacyUserType === 'partner' ? request.cookies.get('exolex_partner_id')?.value : undefined,
+        memberId: request.cookies.get('exolex_member_id')?.value,
+        lawyerId: request.cookies.get('exolex_lawyer_id')?.value,
+        partnerId: request.cookies.get('exolex_partner_id')?.value,
         legalArmId: request.cookies.get('exolex_arm_id')?.value,
       }
     }
