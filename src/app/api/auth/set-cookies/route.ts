@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createSession, setSessionCookie, type UserRole } from '@/lib/supabase-server'
 
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 // 7 days in seconds
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -262,6 +263,21 @@ export async function POST(request: NextRequest) {
         }
         break
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL: Create and set the signed session cookie for middleware auth
+    // This is the primary auth mechanism used by the middleware
+    // ═══════════════════════════════════════════════════════════════════════════
+    const sessionToken = createSession({
+      userId: body.userId || body.lawyerId || body.partnerId || body.employeeId || body.legalArmId || '',
+      userType: body.userType as UserRole,
+      phone: '', // Phone not needed for session validation
+      memberId: body.memberId,
+      lawyerId: body.lawyerId,
+      partnerId: body.partnerId,
+      legalArmId: body.legalArmId,
+    })
+    setSessionCookie(response, sessionToken)
 
     return response
 
