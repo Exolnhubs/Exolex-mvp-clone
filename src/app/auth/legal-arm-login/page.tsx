@@ -242,10 +242,7 @@ export default function LegalArmLoginPage() {
           legal_arm_id: userData.id,
         })
 
-        // حفظ الجلسة
-        localStorage.setItem('exolex_arm_id', userData.id)
-        localStorage.setItem('exolex_arm_name', userData.name_ar || '')
-        localStorage.setItem('exolex_user_type', 'legal_arm')
+        // Set httpOnly cookies via server API
         await setAuthCookies({
           legalArmId: userData.id,
           userType: 'legal_arm'
@@ -271,14 +268,7 @@ export default function LegalArmLoginPage() {
           legal_arm_id: userData.legal_arm_id,
         })
 
-        // حفظ الجلسة
-        localStorage.setItem('exolex_lawyer_id', userData.id)
-        localStorage.setItem('exolex_lawyer_name', userData.full_name || '')
-        localStorage.setItem('exolex_arm_id', userData.legal_arm_id)
-        localStorage.setItem('exolex_user_type', 'lawyer')
-        if (userData.user_id) {
-          localStorage.setItem('exolex_user_id', userData.user_id)
-        }
+        // Set httpOnly cookies via server API
         await setAuthCookies({
           lawyerId: userData.id,
           userId: userData.user_id,

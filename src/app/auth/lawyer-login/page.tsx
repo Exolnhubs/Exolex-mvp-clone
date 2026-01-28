@@ -256,21 +256,13 @@ const accData: AccountData = {
       }
 
       // ═══════════════════════════════════════════════════════════
-      // تسجيل الدخول بنجاح - حفظ البيانات والتوجيه
+      // تسجيل الدخول بنجاح - Set httpOnly cookies and redirect
       // ═══════════════════════════════════════════════════════════
-      
+
       if (accountData.type === 'lawyer') {
         // محامي (ذراع أو مستقل)
-        localStorage.setItem('exolex_lawyer_id', accountData.id)
-        localStorage.setItem('exolex_user_type', 'lawyer')
-
-        if (accountData.lawyer_code) {
-          localStorage.setItem('exolex_lawyer_code', accountData.lawyer_code)
-        }
-
         if (accountData.legal_arm_id) {
           // محامي ذراع قانوني
-          localStorage.setItem('exolex_legal_arm_id', accountData.legal_arm_id)
           await setAuthCookies({
             lawyerId: accountData.id,
             userType: 'lawyer',
@@ -289,16 +281,6 @@ const accData: AccountData = {
         }
       } else {
         // محامي شريك
-        localStorage.setItem('exolex_employee_id', accountData.id)
-        localStorage.setItem('exolex_user_type', 'partner_employee')
-
-        if (accountData.employee_code) {
-          localStorage.setItem('exolex_employee_code', accountData.employee_code)
-        }
-        if (accountData.partner_id) {
-          localStorage.setItem('exolex_partner_id', accountData.partner_id)
-        }
-
         await setAuthCookies({
           employeeId: accountData.id,
           userType: 'partner_employee',

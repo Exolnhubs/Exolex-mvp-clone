@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
+import { setMemberAuthCookies } from '@/lib/auth'
 
 function RegisterContent() {
   const router = useRouter()
@@ -329,11 +330,11 @@ function RegisterContent() {
         }
       }
 
-      // Store user ID
-      localStorage.setItem('exolex_user_id', userId)
+      // Set httpOnly cookies via server API
+      await setMemberAuthCookies(userId, memberId)
 
       toast.success('🎉 تم إنشاء حسابك بنجاح!')
-      router.push('/subscriber/dashboard')
+      window.location.href = '/subscriber/dashboard'
       
     } catch (err) {
       console.error('Registration error:', err)

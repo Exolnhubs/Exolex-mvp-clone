@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -30,6 +30,7 @@ const CITIES = [
 
 export default function CompleteProfilePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [isLoading, setIsLoading] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [phone, setPhone] = useState('')
@@ -59,32 +60,32 @@ export default function CompleteProfilePage() {
   })
 
   useEffect(() => {
-    const storedUserId = localStorage.getItem('exolex_user_id')
-    const storedPhone = localStorage.getItem('exolex_phone')
-    
-    if (!storedUserId) {
+    // Get user ID from URL params (passed from login page)
+    const urlUserId = searchParams.get('uid')
+
+    if (!urlUserId) {
       router.push('/auth/login')
       return
     }
-    
-    setUserId(storedUserId)
-    setPhone(storedPhone || '')
 
-    // جلب البيانات الأساسية
+    setUserId(urlUserId)
+
+    // Fetch user data from database
     const fetchUser = async () => {
       const { data } = await supabase
         .from('users')
-        .select('national_id, document_type, subscriber_type')
-        .eq('id', storedUserId)
+        .select('national_id, document_type, subscriber_type, phone')
+        .eq('id', urlUserId)
         .single()
 
       if (data) {
         setNationalId(data.national_id || '')
         setDocumentType(data.document_type || '')
+        setPhone(data.phone || '')
       }
     }
     fetchUser()
-  }, [router])
+  }, [router, searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
