@@ -81,7 +81,7 @@ async function verifyOwnership(body: SetCookiesRequest): Promise<{ valid: boolea
         if (body.lawyerId) {
           const { data, error } = await supabase
             .from('lawyers')
-            .select('id, legal_arm_id, is_active')
+            .select('id, legal_arm_id, status')
             .eq('id', body.lawyerId)
             .single()
 
@@ -89,9 +89,9 @@ async function verifyOwnership(body: SetCookiesRequest): Promise<{ valid: boolea
             return { valid: false, error: 'Lawyer not found' }
           }
 
-          // Verify lawyer is active (only block if explicitly set to false)
-          if (data.is_active === false) {
-            return { valid: false, error: 'Lawyer account is inactive' }
+          // Verify lawyer is not suspended
+          if (data.status === 'suspended') {
+            return { valid: false, error: 'Lawyer account is suspended' }
           }
 
           // If legalArmId provided, verify it matches
@@ -121,7 +121,7 @@ async function verifyOwnership(body: SetCookiesRequest): Promise<{ valid: boolea
         if (body.employeeId) {
           const { data, error } = await supabase
             .from('partner_employees')
-            .select('id, partner_id, is_active')
+            .select('id, partner_id, status')
             .eq('id', body.employeeId)
             .single()
 
@@ -129,9 +129,9 @@ async function verifyOwnership(body: SetCookiesRequest): Promise<{ valid: boolea
             return { valid: false, error: 'Employee not found' }
           }
 
-          // Verify employee is active (only block if explicitly set to false)
-          if (data.is_active === false) {
-            return { valid: false, error: 'Employee account is inactive' }
+          // Verify employee is not suspended
+          if (data.status === 'suspended') {
+            return { valid: false, error: 'Employee account is suspended' }
           }
 
           // If partnerId provided, verify it matches
