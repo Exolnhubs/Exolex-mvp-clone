@@ -1,35 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
-
-// Helper to set auth cookies for middleware transition
-function setAuthCookies(data: {
-  lawyerId?: string
-  employeeId?: string
-  userType: string
-  legalArmId?: string
-  partnerId?: string
-}) {
-  const maxAge = 7 * 24 * 60 * 60 // 7 days
-  if (data.lawyerId) {
-    document.cookie = `exolex_user_id=${data.lawyerId}; path=/; max-age=${maxAge}; SameSite=Lax`
-    document.cookie = `exolex_lawyer_id=${data.lawyerId}; path=/; max-age=${maxAge}; SameSite=Lax`
-  }
-  if (data.employeeId) {
-    document.cookie = `exolex_user_id=${data.employeeId}; path=/; max-age=${maxAge}; SameSite=Lax`
-  }
-  document.cookie = `exolex_user_type=${data.userType}; path=/; max-age=${maxAge}; SameSite=Lax`
-  if (data.legalArmId) {
-    document.cookie = `exolex_arm_id=${data.legalArmId}; path=/; max-age=${maxAge}; SameSite=Lax`
-  }
-  if (data.partnerId) {
-    document.cookie = `exolex_partner_id=${data.partnerId}; path=/; max-age=${maxAge}; SameSite=Lax`
-  }
-}
+import { setAuthCookies } from '@/lib/auth'
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة دخول المحامين
@@ -295,7 +271,7 @@ const accData: AccountData = {
         if (accountData.legal_arm_id) {
           // محامي ذراع قانوني
           localStorage.setItem('exolex_legal_arm_id', accountData.legal_arm_id)
-          setAuthCookies({
+          await setAuthCookies({
             lawyerId: accountData.id,
             userType: 'lawyer',
             legalArmId: accountData.legal_arm_id
@@ -304,7 +280,7 @@ const accData: AccountData = {
           window.location.href = redirectUrl || '/legal-arm-lawyer/dashboard'
         } else {
           // محامي مستقل
-          setAuthCookies({
+          await setAuthCookies({
             lawyerId: accountData.id,
             userType: 'lawyer'
           })
@@ -323,7 +299,7 @@ const accData: AccountData = {
           localStorage.setItem('exolex_partner_id', accountData.partner_id)
         }
 
-        setAuthCookies({
+        await setAuthCookies({
           employeeId: accountData.id,
           userType: 'partner_employee',
           partnerId: accountData.partner_id

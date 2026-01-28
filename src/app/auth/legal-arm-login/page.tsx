@@ -3,31 +3,12 @@
 export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { Building2, User, ArrowLeft } from 'lucide-react'
-
-// Helper to set auth cookies for middleware transition
-function setAuthCookies(data: {
-  legalArmId?: string
-  lawyerId?: string
-  userId?: string
-  userType: string
-}) {
-  const maxAge = 7 * 24 * 60 * 60 // 7 days
-  if (data.userId) {
-    document.cookie = `exolex_user_id=${data.userId}; path=/; max-age=${maxAge}; SameSite=Lax`
-  }
-  if (data.lawyerId) {
-    document.cookie = `exolex_lawyer_id=${data.lawyerId}; path=/; max-age=${maxAge}; SameSite=Lax`
-  }
-  if (data.legalArmId) {
-    document.cookie = `exolex_arm_id=${data.legalArmId}; path=/; max-age=${maxAge}; SameSite=Lax`
-  }
-  document.cookie = `exolex_user_type=${data.userType}; path=/; max-age=${maxAge}; SameSite=Lax`
-}
+import { setAuthCookies } from '@/lib/auth'
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة دخول الذراع القانوني (محدّثة)
@@ -265,7 +246,7 @@ export default function LegalArmLoginPage() {
         localStorage.setItem('exolex_arm_id', userData.id)
         localStorage.setItem('exolex_arm_name', userData.name_ar || '')
         localStorage.setItem('exolex_user_type', 'legal_arm')
-        setAuthCookies({
+        await setAuthCookies({
           legalArmId: userData.id,
           userType: 'legal_arm'
         })
@@ -298,7 +279,7 @@ export default function LegalArmLoginPage() {
         if (userData.user_id) {
           localStorage.setItem('exolex_user_id', userData.user_id)
         }
-        setAuthCookies({
+        await setAuthCookies({
           lawyerId: userData.id,
           userId: userData.user_id,
           legalArmId: userData.legal_arm_id,
