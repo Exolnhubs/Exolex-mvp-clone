@@ -11,6 +11,7 @@ import {
   Mail, Send, RefreshCw, Copy, UserPlus
 } from 'lucide-react'
 import Link from 'next/link'
+import { getLegalArmId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 👥 إدارة المحامين - الذراع القانوني
@@ -73,7 +74,7 @@ export default function LegalArmEmployeesPage() {
 
   const loadData = async () => {
     try {
-      const armId = localStorage.getItem('exolex_arm_id')
+      const armId = getLegalArmId()
       if (!armId) {
         toast.error('يرجى تسجيل الدخول أولاً')
         return
@@ -165,7 +166,7 @@ export default function LegalArmEmployeesPage() {
     e.preventDefault()
     
     try {
-      const armId = localStorage.getItem('exolex_arm_id')
+      const armId = getLegalArmId()
       if (!armId) return
 
       // التحقق من البريد أو الجوال
@@ -256,7 +257,7 @@ export default function LegalArmEmployeesPage() {
     e.preventDefault()
     
     try {
-      const armId = localStorage.getItem('exolex_arm_id')
+      const armId = getLegalArmId()
       if (!armId) return
 
       if (requiresLicense && (!formData.license_number || !formData.license_expiry)) {

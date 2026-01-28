@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLegalArmId } from '@/lib/cookies'
 import { 
   Shield, Plus, Edit, Trash2, X, Users,
   Check, Copy, ChevronDown, ChevronUp,
@@ -52,7 +53,7 @@ export default function LegalArmPermissionsPage() {
 
   const loadData = async () => {
     try {
-      const armId = localStorage.getItem('exolex_arm_id')
+      const armId = getLegalArmId()
 
       // الأدوار الافتراضية
       const { data: refRolesData } = await supabase
@@ -138,7 +139,7 @@ export default function LegalArmPermissionsPage() {
 
   const handleSaveRole = async () => {
     try {
-      const armId = localStorage.getItem('exolex_arm_id')
+      const armId = getLegalArmId()
       if (!armId) return
 
       if (!roleForm.code || !roleForm.name_ar) {

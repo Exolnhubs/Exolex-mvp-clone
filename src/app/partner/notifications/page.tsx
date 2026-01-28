@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLawyerId, getLegalArmId, getPartnerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 🔔 صفحة الإشعارات الموحدة - الشريك / الذراع / المحامي المستقل
@@ -25,9 +26,9 @@ export default function NotificationsPage() {
 
   const loadData = async () => {
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
-      const legalArmId = localStorage.getItem('exolex_legal_arm_id')
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const partnerId = getPartnerId()
+      const legalArmId = getLegalArmId()
+      const lawyerId = getLawyerId()
 
       let type: UserType = 'partner'
       let fetchedUserId: string | null = null

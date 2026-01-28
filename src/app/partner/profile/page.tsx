@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getPartnerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 🏢 صفحة ملف الشريك القانوني
@@ -50,7 +51,7 @@ export default function PartnerProfilePage() {
     setIsUploadingLogo(true)
     
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
       const fileName = `partner_${partnerId}_${Date.now()}.${file.name.split('.').pop()}`
       
       // رفع الملف إلى Supabase Storage
@@ -117,7 +118,7 @@ export default function PartnerProfilePage() {
   const loadData = async () => {
     try {
       setIsLoading(true)
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
 
       if (!partnerId) {
         toast.error('يرجى تسجيل الدخول')
@@ -172,7 +173,7 @@ export default function PartnerProfilePage() {
   const handleSave = async () => {
     try {
       setIsSaving(true)
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
 
       const updateData = {
         phone: editableFields.phone ? '+966' + editableFields.phone : null,

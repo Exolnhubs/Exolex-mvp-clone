@@ -10,6 +10,7 @@ import {
   Calendar, TrendingUp, ExternalLink
 } from 'lucide-react'
 import Link from 'next/link'
+import { getPartnerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 👥 إدارة الموظفين - الشريك القانوني
@@ -51,7 +52,7 @@ export default function PartnerEmployeesPage() {
 
   const loadData = async () => {
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
       if (!partnerId) return
 
       // أقسام الشريك
@@ -106,7 +107,7 @@ export default function PartnerEmployeesPage() {
     e.preventDefault()
     
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
       if (!partnerId) return
 
       if (requiresLicense && (!formData.license_number || !formData.license_expiry)) {

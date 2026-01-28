@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLawyerId, getLegalArmId, getPartnerId } from '@/lib/cookies'
 import { 
   FileText, Search, Clock, CheckCircle, Eye, Calendar, Loader2, 
   Send, DollarSign, AlertCircle, User, Tag, MapPin, Timer,
@@ -80,9 +81,9 @@ export default function RequestsPage() {
       setIsLoading(true)
       
       // تحديد نوع المستخدم
-      const partnerId = localStorage.getItem('exolex_partner_id')
-      const legalArmId = localStorage.getItem('exolex_legal_arm_id')
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const partnerId = getPartnerId()
+      const legalArmId = getLegalArmId()
+      const lawyerId = getLawyerId()
       
       let id: string | null = null
       let type: UserType = 'partner'

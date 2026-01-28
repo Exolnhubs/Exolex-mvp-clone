@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getPartnerId } from '@/lib/cookies'
 import { 
   Briefcase, Plus, Edit, Trash2, X,
   Shield, Users, DollarSign, Building2
@@ -38,7 +39,7 @@ export default function JobTitlesPage() {
 
   const loadData = async () => {
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
 
       // المسميات المرجعية
       const { data: refTitles } = await supabase
@@ -74,7 +75,7 @@ export default function JobTitlesPage() {
     e.preventDefault()
     
     try {
-      const partnerId = localStorage.getItem('exolex_partner_id')
+      const partnerId = getPartnerId()
       if (!partnerId) {
         toast.error('يرجى تسجيل الدخول')
         return

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLegalArmId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 🏛️ صفحة ملف الذراع القانوني
@@ -50,7 +51,7 @@ export default function LegalArmProfilePage() {
     setIsUploadingLogo(true)
     
     try {
-      const legalArmId = localStorage.getItem('exolex_legal_arm_id')
+      const legalArmId = getLegalArmId()
       const fileName = `legal_arm_${legalArmId}_${Date.now()}.${file.name.split('.').pop()}`
       
       // رفع الملف إلى Supabase Storage
@@ -117,7 +118,7 @@ export default function LegalArmProfilePage() {
   const loadData = async () => {
     try {
       setIsLoading(true)
-      const legalArmId = localStorage.getItem('exolex_legal_arm_id')
+      const legalArmId = getLegalArmId()
 
       if (!legalArmId) {
         toast.error('يرجى تسجيل الدخول')
@@ -172,7 +173,7 @@ export default function LegalArmProfilePage() {
   const handleSave = async () => {
     try {
       setIsSaving(true)
-      const legalArmId = localStorage.getItem('exolex_legal_arm_id')
+      const legalArmId = getLegalArmId()
 
       const updateData = {
         phone: editableFields.phone ? '+966' + editableFields.phone : null,

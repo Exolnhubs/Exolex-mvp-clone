@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLegalArmId } from '@/lib/cookies'
 import { 
   Building2, Plus, Edit, Trash2, X,
   CheckCircle, XCircle
@@ -26,7 +27,7 @@ export default function LegalArmDepartmentsPage() {
 
   const loadData = async () => {
     try {
-      const armId = localStorage.getItem('exolex_arm_id')
+      const armId = getLegalArmId()
 
       const { data: refDepts } = await supabase
         .from('ref_departments')
@@ -58,7 +59,7 @@ export default function LegalArmDepartmentsPage() {
     e.preventDefault()
     
     try {
-      const armId = localStorage.getItem('exolex_arm_id')
+      const armId = getLegalArmId()
       if (!armId) {
         toast.error('يرجى تسجيل الدخول')
         return

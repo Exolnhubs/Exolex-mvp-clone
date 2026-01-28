@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLegalArmId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 💰 صفحة الأرباح - الذراع القانوني
@@ -43,7 +44,7 @@ export default function LegalArmEarningsPage() {
 
   const loadData = async () => {
     try {
-      const legalArmId = localStorage.getItem('exolex_legal_arm_id')
+      const legalArmId = getLegalArmId()
       if (!legalArmId) { 
         router.push('/auth/legal-arm-login')
         return 
