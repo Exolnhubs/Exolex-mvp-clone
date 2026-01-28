@@ -10,6 +10,7 @@ import {
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import toast from 'react-hot-toast'
+import { getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📨 مركز التواصل - محامي الذراع القانوني
@@ -85,7 +86,7 @@ export default function CommunicationPage() {
   // Load Data
   // ═══════════════════════════════════════════════════════════════════════════════
   useEffect(() => {
-    const id = localStorage.getItem('exolex_lawyer_id')
+    const id = getLawyerId()
     if (id) {
       verifyAndLoadData(id)
     } else {

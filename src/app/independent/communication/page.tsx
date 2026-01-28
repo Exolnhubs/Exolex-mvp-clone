@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import { getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -95,7 +96,7 @@ export default function CommunicationPage() {
   // Load Data
   // ═══════════════════════════════════════════════════════════════════════════════
   useEffect(() => {
-    const id = localStorage.getItem('exolex_lawyer_id')
+    const id = getLawyerId()
     if (id) {
       setLawyerId(id)
       loadData(id)

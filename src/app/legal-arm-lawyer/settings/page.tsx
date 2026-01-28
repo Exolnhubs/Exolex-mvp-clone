@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLawyerId, deleteCookie } from '@/lib/cookies'
 import { Briefcase, Users, Shield, Building, Home, Scale, FileText, Globe, Stamp, Zap, Folder, Gavel, Car, Heart, GraduationCap, Landmark, Plane, ShoppingBag, Wifi, LucideIcon } from 'lucide-react'
 
 // ═══════════════════════════════════════════════════════════════
@@ -99,7 +100,7 @@ export default function SettingsPage() {
 
   const loadData = async () => {
     try {
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const lawyerId = getLawyerId()
       if (!lawyerId) { router.push('/auth/lawyer-login'); return }
 
       // ═══════════════════════════════════════════════════════════
@@ -181,7 +182,7 @@ export default function SettingsPage() {
   const saveSettings = async () => {
     setIsSaving(true)
     try {
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const lawyerId = getLawyerId()
       const { data: lawyerData } = await supabase
         .from('lawyers')
         .select('user_id')
@@ -381,7 +382,7 @@ export default function SettingsPage() {
               <div className="pt-4 border-t">
                 <button
                   onClick={() => {
-                    localStorage.removeItem('exolex_lawyer_id')
+                    deleteCookie('exolex_lawyer_id')
                     router.push('/auth/lawyer-login')
                   }}
                   className="px-6 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"

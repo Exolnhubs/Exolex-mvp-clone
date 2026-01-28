@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Clock, FileText, CheckCircle, AlertTriangle, RefreshCw, Coins, PlayCircle, ArrowLeft } from 'lucide-react'
+import { getLawyerId } from '@/lib/cookies'
 
 interface Task {
   id: string
@@ -33,7 +34,7 @@ export default function MyTasksPage() {
   const [lawyerId, setLawyerId] = useState<string | null>(null)
 
   useEffect(() => {
-    const id = localStorage.getItem('exolex_lawyer_id')
+    const id = getLawyerId()
     if (id) {
       setLawyerId(id)
       fetchTasks(id)

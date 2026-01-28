@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
-import { 
+import {
   FileSignature, Search, Clock, CheckCircle, XCircle, Eye, Plus,
   Calendar, Loader2, FileText, User, Send, Edit, Copy, Download, AlertCircle
 } from 'lucide-react'
+import { getPartnerId, getLegalArmId, getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📋 صفحة العقود الموحدة - الشريك / الذراع / المحامي المستقل
@@ -64,9 +65,9 @@ export default function ContractsPage() {
   const loadData = async () => {
     try {
       setIsLoading(true)
-      const partnerId = localStorage.getItem('exolex_partner_id')
-      const legalArmId = localStorage.getItem('exolex_legal_arm_id')
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const partnerId = getPartnerId()
+      const legalArmId = getLegalArmId()
+      const lawyerId = getLawyerId()
       
       let id: string | null = null
       let type: UserType = 'partner'

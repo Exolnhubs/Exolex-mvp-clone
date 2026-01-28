@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { getLawyerId } from '@/lib/cookies'
 
 export default function DocumentsPage() {
   const router = useRouter()
@@ -9,7 +10,7 @@ export default function DocumentsPage() {
   const [documents, setDocuments] = useState<any[]>([])
 
   useEffect(() => {
-    const lawyerId = localStorage.getItem('exolex_lawyer_id')
+    const lawyerId = getLawyerId()
     if (!lawyerId) { router.push('/auth/lawyer-login'); return }
     
     supabase.from('lawyers').select('user_id').eq('id', lawyerId).single()

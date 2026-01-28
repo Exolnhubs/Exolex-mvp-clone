@@ -115,7 +115,7 @@ export default function MyRatingsPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex">
       <Sidebar isSubscribed={true} userName="مشترك" onLogout={() => {
-        localStorage.clear()
+        clearAuthCookies()
         router.push('/auth/login')
       }} />
       

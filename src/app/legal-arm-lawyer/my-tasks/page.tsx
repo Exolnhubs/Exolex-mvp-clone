@@ -8,6 +8,7 @@ import {
   PlayCircle, ArrowLeft, CheckCheck, Bell, Package, Briefcase
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة مهامي - محامي الذراع القانوني
@@ -48,7 +49,7 @@ export default function LegalArmLawyerMyTasksPage() {
   const [acceptingId, setAcceptingId] = useState<string | null>(null)
 
   useEffect(() => {
-    const id = localStorage.getItem('exolex_lawyer_id')
+    const id = getLawyerId()
     if (id) {
       setLawyerId(id)
       fetchTasks(id)

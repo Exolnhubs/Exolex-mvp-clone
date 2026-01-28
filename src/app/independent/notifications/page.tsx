@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { getLawyerId } from '@/lib/cookies'
 
 // ═══════════════════════════════════════════════════════════════
 // 🔔 صفحة الإشعارات - المحامي المستقل
@@ -21,7 +22,7 @@ export default function NotificationsPage() {
 
   const loadData = async () => {
     try {
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const lawyerId = getLawyerId()
       if (!lawyerId) { router.push('/auth/lawyer-login'); return }
 
       // جلب user_id من lawyers
@@ -85,7 +86,7 @@ export default function NotificationsPage() {
   // تحديد الكل كمقروء
   const markAllAsRead = async () => {
     try {
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const lawyerId = getLawyerId()
       const { data: lawyerData } = await supabase
         .from('lawyers')
         .select('user_id')
@@ -122,7 +123,7 @@ export default function NotificationsPage() {
   const deleteAll = async () => {
     if (!confirm('هل تريد حذف جميع الإشعارات؟')) return
     try {
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
+      const lawyerId = getLawyerId()
       const { data: lawyerData } = await supabase
         .from('lawyers')
         .select('user_id')
