@@ -89,8 +89,8 @@ async function verifyOwnership(body: SetCookiesRequest): Promise<{ valid: boolea
             return { valid: false, error: 'Lawyer not found' }
           }
 
-          // Verify lawyer is active
-          if (!data.is_active) {
+          // Verify lawyer is active (only block if explicitly set to false)
+          if (data.is_active === false) {
             return { valid: false, error: 'Lawyer account is inactive' }
           }
 
@@ -129,8 +129,8 @@ async function verifyOwnership(body: SetCookiesRequest): Promise<{ valid: boolea
             return { valid: false, error: 'Employee not found' }
           }
 
-          // Verify employee is active
-          if (!data.is_active) {
+          // Verify employee is active (only block if explicitly set to false)
+          if (data.is_active === false) {
             return { valid: false, error: 'Employee account is inactive' }
           }
 
@@ -220,9 +220,10 @@ export async function POST(request: NextRequest) {
     // Set user type cookie (always required)
     response.cookies.set('exolex_user_type', body.userType, cookieOptions)
 
-    // Set user ID cookie
-    if (body.userId) {
-      response.cookies.set('exolex_user_id', body.userId, cookieOptions)
+    // Set user ID cookie (use fallback chain to ensure it's always set)
+    const effectiveUserId = body.userId || body.lawyerId || body.partnerId || body.employeeId || body.legalArmId
+    if (effectiveUserId) {
+      response.cookies.set('exolex_user_id', effectiveUserId, cookieOptions)
     }
 
     // Set role-specific cookies based on user type

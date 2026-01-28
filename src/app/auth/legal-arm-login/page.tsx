@@ -8,7 +8,7 @@ import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { Building2, User, ArrowLeft } from 'lucide-react'
-import { setAuthCookies } from '@/lib/auth'
+import { setLegalArmAuthCookies, setLawyerAuthCookies } from '@/lib/auth'
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة دخول الذراع القانوني (محدّثة)
@@ -242,11 +242,8 @@ export default function LegalArmLoginPage() {
           legal_arm_id: userData.id,
         })
 
-        // Set httpOnly cookies via server API
-        await setAuthCookies({
-          legalArmId: userData.id,
-          userType: 'legal_arm'
-        })
+        // Set auth cookies via server API
+        await setLegalArmAuthCookies(userData.id)
 
         // التوجيه
         if (!userData.name_ar || !userData.manager_national_id) {
@@ -268,13 +265,8 @@ export default function LegalArmLoginPage() {
           legal_arm_id: userData.legal_arm_id,
         })
 
-        // Set httpOnly cookies via server API
-        await setAuthCookies({
-          lawyerId: userData.id,
-          userId: userData.user_id,
-          legalArmId: userData.legal_arm_id,
-          userType: 'lawyer'
-        })
+        // Set auth cookies via server API
+        await setLawyerAuthCookies(userData.id, userData.legal_arm_id)
 
         toast.success(`مرحباً بك - ${userData.full_name}`)
         window.location.href = redirectUrl || '/legal-arm-lawyer/dashboard'

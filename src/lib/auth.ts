@@ -197,7 +197,7 @@ interface AuthCookieData {
 export async function setAuthCookies(data: AuthCookieData): Promise<void> {
   const params: SetCookiesParams = {
     userType: data.userType || 'member',
-    userId: data.userId || data.lawyerId || data.memberId || data.employeeId || data.partnerId,
+    userId: data.userId || data.lawyerId || data.memberId || data.employeeId || data.partnerId || data.legalArmId,
     memberId: data.memberId,
     lawyerId: data.lawyerId,
     partnerId: data.partnerId,
