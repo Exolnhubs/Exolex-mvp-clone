@@ -8,6 +8,7 @@
 
 import { useState, useRef, useEffect, useImperativeHandle, forwardRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { getUserId } from '@/lib/cookies'
 import toast from 'react-hot-toast'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -80,7 +81,7 @@ const FloatingNolex = forwardRef<FloatingNolexRef, FloatingNolexProps>(
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
-      const id = localStorage.getItem('exolex_user_id')
+      const id = getUserId()
       setUserId(id)
       if (id) {
         fetchQuota(id)

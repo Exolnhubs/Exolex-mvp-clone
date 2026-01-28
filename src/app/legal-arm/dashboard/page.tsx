@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { 
+import { getLegalArmId } from '@/lib/cookies'
+import {
   Users, FileText, Scale, Wallet, TrendingUp, TrendingDown,
   Clock, AlertTriangle, CheckCircle, XCircle, Star, Calendar,
   ArrowLeft, Building2, Briefcase, Award, DollarSign
@@ -47,10 +48,10 @@ export default function LegalArmDashboardPage() {
 
   const loadData = async () => {
     try {
-      const armId = localStorage.getItem('exolex_arm_id')
+      const armId = getLegalArmId()
       if (!armId) {
-        // router.push('/auth/arm-login')
-        // return
+        router.push('/auth/legal-arm-login')
+        return
       }
 
       // بيانات الذراع

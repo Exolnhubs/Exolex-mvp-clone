@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { getLawyerId, getLegalArmId } from '@/lib/cookies'
 import { logoutLawyer } from '@/lib/auth'
 import QuoteFormModal, { QuoteFormData } from '@/components/QuoteFormModal'
 import { X, User, Clock, Flag, Send, CheckCircle, Eye, Download, FileText as FileIcon, Coins } from 'lucide-react'
@@ -67,8 +68,8 @@ const [selectedRequest, setSelectedRequest] = useState<any>(null)
 const [submitting, setSubmitting] = useState(false)
   useEffect(() => {
     const init = async () => {
-      const lawyerId = localStorage.getItem('exolex_lawyer_id')
-      const legalArmId = localStorage.getItem('exolex_legal_arm_id')
+      const lawyerId = getLawyerId()
+      const legalArmId = getLegalArmId()
 
       if (!lawyerId || !legalArmId) {
         router.push('/auth/lawyer-login')
@@ -188,7 +189,7 @@ const openQuoteModal = (request: any) => {
 
 // قبول طلب مسعّر
 const handleAcceptRequest = async (request: any) => {
-  const lawyerId = localStorage.getItem('exolex_lawyer_id')
+  const lawyerId = getLawyerId()
   if (!lawyerId) return
 
   if (!confirm('هل أنت متأكد من قبول هذا الطلب؟')) return
@@ -222,7 +223,7 @@ const handleAcceptRequest = async (request: any) => {
 
 // تقديم عرض سعر
 const handleSubmitQuote = async (data: QuoteFormData) => {
-  const lawyerId = localStorage.getItem('exolex_lawyer_id')
+  const lawyerId = getLawyerId()
   if (!lawyerId || !selectedRequest) return
 
   setSubmitting(true)

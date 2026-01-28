@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { getLawyerId } from '@/lib/cookies'
 import { Clock, CheckCircle, Send, RefreshCw } from 'lucide-react'
 import QuoteFormModal, { QuoteFormData } from '@/components/QuoteFormModal'
 import { logoutLawyer } from '@/lib/auth'
@@ -48,11 +49,9 @@ export default function IndependentLayout({ children }: { children: React.ReactN
   const [selectedRequest, setSelectedRequest] = useState<any>(null)
 
   useEffect(() => {
-    const name = localStorage.getItem('exolex_lawyer_name')
-    const id = localStorage.getItem('exolex_lawyer_id')
-    if (name) setLawyerName(name)
-      if (id) setLawyerId(id)
-        fetchAvailableRequests()
+    const id = getLawyerId()
+    if (id) setLawyerId(id)
+    fetchAvailableRequests()
         
         const channel = supabase
       .channel('independent-requests')
