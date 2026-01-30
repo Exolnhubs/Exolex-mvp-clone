@@ -163,26 +163,20 @@ export default function LegalArmLoginPage() {
   // ─────────────────────────────────────────────────────────────
   
   const sendOTP = async (phone: string, purpose: string) => {
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+    const response = await fetch('/api/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, purpose })
+    })
 
-    const { error: otpError } = await supabase
-      .from('otp_verifications')
-      .insert({
-        phone: phone,
-        code: otpCode,
-        purpose: purpose,
-        expires_at: expiresAt,
-        status: 'pending',
-        channel: 'whatsapp',
-        attempts: 0,
-        max_attempts: 3
-      })
+    const result = await response.json()
 
-    if (otpError) throw otpError
+    if (!response.ok) {
+      throw new Error(result.error || 'حدث خطأ في إرسال الرمز')
+    }
 
     toast.success('تم إرسال رمز التحقق')
-    
+
     setStep('otp')
   }
 
@@ -202,29 +196,20 @@ export default function LegalArmLoginPage() {
     const purpose = loginType === 'manager' ? 'legal_arm_login' : 'lawyer_login'
 
     try {
-      const { data: otpData, error: otpError } = await supabase
-        .from('otp_verifications')
-        .select('*')
-        .eq('phone', phone)
-        .eq('code', otpCode)
-        .eq('purpose', purpose)
-        .eq('status', 'pending')
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      // Verify OTP via server API
+      const verifyResponse = await fetch('/api/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, code: otpCode, purpose })
+      })
 
-      if (otpError || !otpData) {
-        toast.error('رمز التحقق غير صحيح أو منتهي الصلاحية')
+      const verifyResult = await verifyResponse.json()
+
+      if (!verifyResponse.ok) {
+        toast.error(verifyResult.error || 'رمز التحقق غير صحيح أو منتهي الصلاحية')
         setIsLoading(false)
         return
       }
-
-      // تحديث حالة OTP
-      await supabase
-        .from('otp_verifications')
-        .update({ status: 'verified', verified_at: new Date().toISOString() })
-        .eq('id', otpData.id)
 
       // ═══════════════════════════════════════════════════════════
       // توجيه حسب نوع المستخدم

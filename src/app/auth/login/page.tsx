@@ -35,46 +35,44 @@ export default function LoginPage() {
 
   const handleSendOTP = async () => {
     if (!validateNationalId(nationalId)) {
-      toast.error(idType === 'national_id' 
-        ? 'رقم الهوية يجب أن يكون 10 أرقام ويبدأ بـ 1' 
+      toast.error(idType === 'national_id'
+        ? 'رقم الهوية يجب أن يكون 10 أرقام ويبدأ بـ 1'
         : 'رقم الإقامة يجب أن يكون 10 أرقام ويبدأ بـ 2 أو 3')
       return
     }
-    
+
     if (!validatePhone(phone)) {
       toast.error('رقم الجوال يجب أن يكون 9 أرقام ويبدأ بـ 5')
       return
     }
 
     setIsLoading(true)
-    
+
     try {
       const fullPhone = '+966' + phone
-      const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
 
-      const { error: otpError } = await supabase
-        .from('otp_verifications')
-        .insert({
+      const response = await fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           phone: fullPhone,
-          code: otpCode,
           purpose: 'login',
-          expires_at: expiresAt,
           national_id: nationalId,
-          status: 'pending',
-          channel: 'sms',
-          attempts: 0,
-          max_attempts: 3
         })
+      })
 
-      if (otpError) throw otpError
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'حدث خطأ في إرسال الرمز')
+      }
 
       toast.success('تم إرسال رمز التحقق')
-      
+
       setStep('otp')
     } catch (error: any) {
       console.error('Error:', error)
-      toast.error('حدث خطأ، حاول مرة أخرى')
+      toast.error(error.message || 'حدث خطأ، حاول مرة أخرى')
     } finally {
       setIsLoading(false)
     }
@@ -91,28 +89,24 @@ export default function LoginPage() {
     const fullPhone = '+966' + phone
 
     try {
-      const { data: otpData, error: otpError } = await supabase
-        .from('otp_verifications')
-        .select('*')
-        .eq('phone', fullPhone)
-        .eq('code', otpCode)
-        .eq('purpose', 'login')
-        .eq('status', 'pending')
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
+      // Verify OTP via server API
+      const verifyResponse = await fetch('/api/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: fullPhone,
+          code: otpCode,
+          purpose: 'login',
+        })
+      })
 
-      if (otpError || !otpData) {
-        toast.error('رمز التحقق غير صحيح أو منتهي الصلاحية')
+      const verifyResult = await verifyResponse.json()
+
+      if (!verifyResponse.ok) {
+        toast.error(verifyResult.error || 'رمز التحقق غير صحيح أو منتهي الصلاحية')
         setIsLoading(false)
         return
       }
-
-      await supabase
-        .from('otp_verifications')
-        .update({ status: 'verified', verified_at: new Date().toISOString() })
-        .eq('id', otpData.id)
 
       const { data: existingUser } = await supabase
         .from('users')

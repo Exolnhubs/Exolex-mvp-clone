@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js'
 import { validateBody, sanitizePhone, isValidSaudiPhone } from '@/lib/validate'
 import { otpRateLimiter, rateLimitResponse, isPhoneBlocked } from '@/lib/rate-limit'
 import { logger, createRequestContext } from '@/lib/logger'
+import { sendOtpSms, isTwilioConfigured } from '@/lib/twilio'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -115,25 +116,29 @@ export async function POST(request: NextRequest) {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // TODO: إرسال SMS فعلي عبر Twilio أو غيره
-    // حالياً نطبع الرمز في console للتجربة
+    // إرسال SMS عبر Twilio
     // ═══════════════════════════════════════════════════════════
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('═══════════════════════════════════════')
-      console.log('🔐 رمز التحقق OTP:', otpCode)
-      console.log('📱 الجوال:', formattedPhone)
-      console.log('📋 الغرض:', purpose)
-      console.log('═══════════════════════════════════════')
+    const smsResult = await sendOtpSms(formattedPhone, otpCode, purpose || 'login')
+
+    if (!smsResult.success) {
+      logger.error(ctx, new Error(`SMS delivery failed: ${smsResult.error}`))
+      return NextResponse.json(
+        { success: false, error: 'فشل إرسال رمز التحقق. حاول مرة أخرى', requestId: ctx.requestId },
+        { status: 502 }
+      )
     }
 
-    logger.info('OTP sent successfully', { phone: formattedPhone, purpose })
+    logger.info('OTP sent successfully', {
+      phone: formattedPhone,
+      purpose,
+      messageId: smsResult.messageId,
+      twilioConfigured: isTwilioConfigured(),
+    })
 
     return NextResponse.json({
       success: true,
       message: 'تم إرسال رمز التحقق',
       requestId: ctx.requestId,
-      // للتجربة فقط - يُحذف في الإنتاج
-      debug_code: process.env.NODE_ENV === 'development' ? otpCode : undefined
     })
 
   } catch (error) {
