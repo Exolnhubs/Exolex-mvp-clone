@@ -8,11 +8,18 @@ import { supabase } from '@/lib/supabase'
 import { logoutMember } from '@/lib/auth'
 import { getUserId } from '@/lib/cookies'
 import Sidebar from '@/components/layout/Sidebar'
+import MoyasarPaymentForm from '@/components/payment/MoyasarPaymentForm'
 import toast from 'react-hot-toast'
 
 interface User {
   id: string
   full_name: string
+}
+
+interface SelectedPackage {
+  id: string
+  name: string
+  price: number
 }
 
 const packages = [
@@ -85,8 +92,10 @@ const packages = [
 export default function SubscriptionPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
+  const [memberId, setMemberId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSubscribed, setIsSubscribed] = useState(false)
+  const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null)
 
   useEffect(() => {
     const userId = getUserId()
@@ -107,8 +116,8 @@ export default function SubscriptionPage() {
         setUser(userData)
       }
 
-      // Fetch member first
       const { data: memberData } = await supabase.from('members').select('id').eq('user_id', userId).single()
+      if (memberData) setMemberId(memberData.id)
       
       const { data: subData } = await supabase
         .from('subscriptions')
@@ -132,22 +141,32 @@ export default function SubscriptionPage() {
   }
 
 
-  const handleSubscribe = async (packageId: string) => {
-    const userId = getUserId()
-    if (!userId) return
-    
-    const { error } = await supabase.rpc('activate_subscription_free', {
-      p_user_id: userId,
-      p_package_name: packageId
-    })
-    
-    if (error) {
-      toast.error('حدث خطأ في تفعيل الاشتراك')
-      console.error(error)
-    } else {
-      toast.success('تم تفعيل الاشتراك بنجاح!')
-      router.push('/subscriber/dashboard')
+  const handleSubscribe = (packageId: string) => {
+    if (!memberId) {
+      toast.error('يرجى تسجيل الدخول أولاً')
+      return
     }
+
+    const pkg = packages.find(p => p.id === packageId)
+    if (!pkg) return
+
+    // Include 15% VAT
+    const totalWithVat = pkg.price + pkg.price * 0.15
+
+    // Store pending payment details for the callback page
+    sessionStorage.setItem('pending_payment', JSON.stringify({
+      payment_type: 'subscription',
+      expected_amount: totalWithVat,
+      member_id: memberId,
+      package_id: packageId,
+    }))
+
+    setSelectedPackage({ id: pkg.id, name: pkg.name, price: totalWithVat })
+  }
+
+  const closePaymentModal = () => {
+    setSelectedPackage(null)
+    sessionStorage.removeItem('pending_payment')
   }
 
   if (isLoading) {
@@ -361,6 +380,40 @@ export default function SubscriptionPage() {
           </div>
         </div>
       </main>
+
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* Payment Modal                                          */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      {selectedPackage && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 relative" dir="rtl">
+            <button
+              onClick={closePaymentModal}
+              className="absolute top-4 left-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600"
+            >
+              X
+            </button>
+
+            <h2 className="text-xl font-bold text-gray-800 mb-1">
+              اشتراك باقة {selectedPackage.name}
+            </h2>
+            <p className="text-gray-500 text-sm mb-6">
+              المبلغ: {selectedPackage.price.toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ريال (شامل الضريبة)
+            </p>
+
+            <MoyasarPaymentForm
+              amount={selectedPackage.price}
+              description={`اشتراك باقة ${selectedPackage.name} - ExoLex`}
+              callbackUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/subscriber/payment/callback`}
+              metadata={{
+                payment_type: 'subscription',
+                package_id: selectedPackage.id,
+                member_id: memberId || '',
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
