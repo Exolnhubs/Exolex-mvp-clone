@@ -8,7 +8,7 @@ import { createClient } from '@supabase/supabase-js'
 import { validateBody, sanitizePhone, isValidSaudiPhone } from '@/lib/validate'
 import { otpRateLimiter, rateLimitResponse, isPhoneBlocked } from '@/lib/rate-limit'
 import { logger, createRequestContext } from '@/lib/logger'
-import { sendOtpSms, isTwilioConfigured } from '@/lib/twilio'
+import { sendOtp, type OtpChannel } from '@/lib/otp-sender'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,6 +22,7 @@ const OTP_REQUEST_SCHEMA = {
   legal_arm_id: { type: 'string' as const },
   national_id: { type: 'string' as const },
   requesting_lawyer_id: { type: 'string' as const },
+  channel: { type: 'string' as const, enum: ['sms', 'whatsapp', 'dev'] as const },
 }
 
 export async function POST(request: NextRequest) {
@@ -49,7 +50,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { purpose, legal_arm_id, national_id, requesting_lawyer_id } = validation.sanitized
+    const { purpose, legal_arm_id, national_id, requesting_lawyer_id, channel: rawChannel } = validation.sanitized
+    const channel: OtpChannel = (['sms', 'whatsapp', 'dev'].includes(rawChannel as string) ? rawChannel : 'sms') as OtpChannel
 
     // Sanitize and validate phone
     const formattedPhone = sanitizePhone(body.phone)
@@ -100,7 +102,7 @@ export async function POST(request: NextRequest) {
         legal_arm_id: legal_arm_id || null,
         national_id: national_id || null,
         requesting_lawyer_id: requesting_lawyer_id || null,
-        channel: 'sms',
+        channel,
         status: 'pending',
         attempts: 0,
         max_attempts: 3,
@@ -116,12 +118,12 @@ export async function POST(request: NextRequest) {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // إرسال SMS عبر Twilio
+    // إرسال OTP عبر القناة المحددة
     // ═══════════════════════════════════════════════════════════
-    const smsResult = await sendOtpSms(formattedPhone, otpCode, purpose || 'login')
+    const deliveryResult = await sendOtp(formattedPhone, otpCode, purpose || 'login', channel)
 
-    if (!smsResult.success) {
-      logger.error(ctx, new Error(`SMS delivery failed: ${smsResult.error}`))
+    if (!deliveryResult.success) {
+      logger.error(ctx, new Error(`OTP delivery failed (${channel}): ${deliveryResult.error}`))
       return NextResponse.json(
         { success: false, error: 'فشل إرسال رمز التحقق. حاول مرة أخرى', requestId: ctx.requestId },
         { status: 502 }
@@ -131,13 +133,14 @@ export async function POST(request: NextRequest) {
     logger.info('OTP sent successfully', {
       phone: formattedPhone,
       purpose,
-      messageId: smsResult.messageId,
-      twilioConfigured: isTwilioConfigured(),
+      channel: deliveryResult.channel,
+      messageId: deliveryResult.messageId,
     })
 
     return NextResponse.json({
       success: true,
       message: 'تم إرسال رمز التحقق',
+      channel: deliveryResult.channel,
       requestId: ctx.requestId,
     })
 

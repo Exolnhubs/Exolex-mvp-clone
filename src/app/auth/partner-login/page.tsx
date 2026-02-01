@@ -8,6 +8,9 @@ import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { setPartnerAuthCookies } from '@/lib/auth'
+import OtpChannelSelector from '@/components/OtpChannelSelector'
+
+type OtpChannel = 'sms' | 'whatsapp' | 'dev'
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة دخول الشريك القانوني
@@ -26,6 +29,7 @@ export default function PartnerLoginPage() {
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
   const [partnerData, setPartnerData] = useState<any>(null)
+  const [otpChannel, setOtpChannel] = useState<OtpChannel>('sms')
 
   // ─────────────────────────────────────────────────────────────
   // التحقق من صحة البيانات
@@ -103,6 +107,7 @@ export default function PartnerLoginPage() {
           phone: fullPhone,
           purpose: 'partner_login',
           national_id: licenseNumber,
+          channel: otpChannel,
         })
       })
 
@@ -112,7 +117,11 @@ export default function PartnerLoginPage() {
         throw new Error(otpResult.error || 'حدث خطأ في إرسال الرمز')
       }
 
-      toast.success('تم إرسال رمز التحقق')
+      if (otpChannel === 'dev' && otpResult.channel === 'dev') {
+        toast.success('وضع التجربة: تحقق من وحدة التحكم (Console) للرمز', { duration: 5000 })
+      } else {
+        toast.success('تم إرسال رمز التحقق')
+      }
 
       setStep('otp')
     } catch (error: any) {
@@ -273,6 +282,11 @@ export default function PartnerLoginPage() {
                     maxLength={9}
                   />
                 </div>
+              </div>
+
+              {/* اختيار طريقة الإرسال */}
+              <div className="mb-6">
+                <OtpChannelSelector value={otpChannel} onChange={setOtpChannel} accent="blue" />
               </div>
 
               {/* زر الإرسال */}
