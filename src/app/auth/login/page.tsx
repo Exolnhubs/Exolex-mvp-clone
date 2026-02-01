@@ -7,6 +7,9 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { setMemberAuthCookies } from '@/lib/auth'
+import OtpChannelSelector from '@/components/OtpChannelSelector'
+
+type OtpChannel = 'sms' | 'whatsapp' | 'dev'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -19,7 +22,8 @@ export default function LoginPage() {
   const [nationalId, setNationalId] = useState('')
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
-  
+  const [otpChannel, setOtpChannel] = useState<OtpChannel>('sms')
+
   const validateNationalId = (id: string): boolean => {
     if (id.length !== 10) return false
     if (!/^\d{10}$/.test(id)) return false
@@ -58,6 +62,7 @@ export default function LoginPage() {
           phone: fullPhone,
           purpose: 'login',
           national_id: nationalId,
+          channel: otpChannel,
         })
       })
 
@@ -67,7 +72,11 @@ export default function LoginPage() {
         throw new Error(result.error || 'حدث خطأ في إرسال الرمز')
       }
 
-      toast.success('تم إرسال رمز التحقق')
+      if (otpChannel === 'dev' && result.channel === 'dev') {
+        toast.success('وضع التجربة: تحقق من وحدة التحكم (Console) للرمز', { duration: 5000 })
+      } else {
+        toast.success('تم إرسال رمز التحقق')
+      }
 
       setStep('otp')
     } catch (error: any) {
@@ -264,6 +273,10 @@ export default function LoginPage() {
               <p className="text-xs text-amber-600 mt-1">
                 ⚠️ يجب أن يكون الرقم المسجل في أبشر
               </p>
+            </div>
+
+            <div className="mb-6">
+              <OtpChannelSelector value={otpChannel} onChange={setOtpChannel} />
             </div>
 
             <button

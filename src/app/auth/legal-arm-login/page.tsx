@@ -9,6 +9,9 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { Building2, User, ArrowLeft } from 'lucide-react'
 import { setLegalArmAuthCookies, setLawyerAuthCookies } from '@/lib/auth'
+import OtpChannelSelector from '@/components/OtpChannelSelector'
+
+type OtpChannel = 'sms' | 'whatsapp' | 'dev'
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة دخول الذراع القانوني (محدّثة)
@@ -36,6 +39,7 @@ export default function LegalArmLoginPage() {
   const [lawyerPhone, setLawyerPhone] = useState('')
   
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
+  const [otpChannel, setOtpChannel] = useState<OtpChannel>('sms')
   const [userData, setUserData] = useState<any>(null)
 
   // ─────────────────────────────────────────────────────────────
@@ -166,7 +170,7 @@ export default function LegalArmLoginPage() {
     const response = await fetch('/api/send-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, purpose })
+      body: JSON.stringify({ phone, purpose, channel: otpChannel })
     })
 
     const result = await response.json()
@@ -175,7 +179,11 @@ export default function LegalArmLoginPage() {
       throw new Error(result.error || 'حدث خطأ في إرسال الرمز')
     }
 
-    toast.success('تم إرسال رمز التحقق')
+    if (otpChannel === 'dev') {
+      toast.success('وضع التجربة: تحقق من وحدة التحكم (Console) للرمز', { duration: 5000 })
+    } else {
+      toast.success('تم إرسال رمز التحقق')
+    }
 
     setStep('otp')
   }
@@ -389,6 +397,10 @@ export default function LegalArmLoginPage() {
                     </div>
                   </div>
 
+                  <div className="mb-4">
+                    <OtpChannelSelector value={otpChannel} onChange={setOtpChannel} accent="purple" />
+                  </div>
+
                   {/* زر الإرسال */}
                   <button
                     onClick={handleManagerSendOTP}
@@ -434,6 +446,10 @@ export default function LegalArmLoginPage() {
                     <p className="text-xs text-slate-400 mt-2">
                       💡 أدخل رقم الجوال الذي سجلت به عند قبول الدعوة
                     </p>
+                  </div>
+
+                  <div className="mb-4">
+                    <OtpChannelSelector value={otpChannel} onChange={setOtpChannel} accent="purple" />
                   </div>
 
                   {/* زر الإرسال */}

@@ -6,6 +6,9 @@ import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { setLawyerAuthCookies, setPartnerEmployeeAuthCookies } from '@/lib/auth'
+import OtpChannelSelector from '@/components/OtpChannelSelector'
+
+type OtpChannel = 'sms' | 'whatsapp' | 'dev'
 
 // ═══════════════════════════════════════════════════════════════
 // 📌 صفحة دخول المحامين
@@ -56,6 +59,7 @@ export default function LawyerLoginPage() {
   const [maskedPhone, setMaskedPhone] = useState('')
   const [accountData, setAccountData] = useState<AccountData | null>(null)
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
+  const [otpChannel, setOtpChannel] = useState<OtpChannel>('sms')
 
   // ─────────────────────────────────────────────────────────────
   // التحقق من صحة رقم الهوية
@@ -184,7 +188,8 @@ const accData: AccountData = {
         body: JSON.stringify({
           phone: formattedPhone,
           purpose: 'lawyer_login',
-          legal_arm_id: accData.legal_arm_id || null
+          legal_arm_id: accData.legal_arm_id || null,
+          channel: otpChannel,
         })
       })
 
@@ -198,7 +203,11 @@ const accData: AccountData = {
       setAccountData(accData)
       setMaskedPhone(maskPhone(accData.phone))
       setStep('otp')
-      toast.success('تم إرسال رمز التحقق')
+      if (otpChannel === 'dev') {
+        toast.success('وضع التجربة: تحقق من وحدة التحكم (Console) للرمز', { duration: 5000 })
+      } else {
+        toast.success('تم إرسال رمز التحقق')
+      }
 
     } catch (error: any) {
       console.error('Login error:', error)
@@ -311,7 +320,8 @@ const accData: AccountData = {
         body: JSON.stringify({
           phone: formattedPhone,
           purpose: 'lawyer_login',
-          legal_arm_id: accountData.legal_arm_id || null
+          legal_arm_id: accountData.legal_arm_id || null,
+          channel: otpChannel,
         })
       })
 
@@ -393,6 +403,10 @@ const accData: AccountData = {
               <p className="text-xs text-slate-400 mt-2 text-center">
                 سيتم إرسال رمز التحقق للجوال المسجل في النظام
               </p>
+            </div>
+
+            <div className="mb-4">
+              <OtpChannelSelector value={otpChannel} onChange={setOtpChannel} accent="purple" />
             </div>
 
             <button
