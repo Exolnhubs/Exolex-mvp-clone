@@ -179,8 +179,8 @@ export default function LegalArmLoginPage() {
       throw new Error(result.error || 'حدث خطأ في إرسال الرمز')
     }
 
-    if (otpChannel === 'dev') {
-      toast.success('وضع التجربة: تحقق من وحدة التحكم (Console) للرمز', { duration: 5000 })
+    if (otpChannel === 'dev' && result.channel === 'dev') {
+      toast.success(`وضع التجربة - رمز التحقق: ${result.debug_code}`, { duration: 10000 })
     } else {
       toast.success('تم إرسال رمز التحقق')
     }

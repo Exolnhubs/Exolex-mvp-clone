@@ -118,7 +118,7 @@ export default function PartnerLoginPage() {
       }
 
       if (otpChannel === 'dev' && otpResult.channel === 'dev') {
-        toast.success('وضع التجربة: تحقق من وحدة التحكم (Console) للرمز', { duration: 5000 })
+        toast.success(`وضع التجربة - رمز التحقق: ${otpResult.debug_code}`, { duration: 10000 })
       } else {
         toast.success('تم إرسال رمز التحقق')
       }
