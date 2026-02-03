@@ -142,8 +142,6 @@ export async function POST(request: NextRequest) {
       message: 'تم إرسال رمز التحقق',
       channel: deliveryResult.channel,
       requestId: ctx.requestId,
-      // In dev mode, return the code so it can be shown in the browser
-      ...(channel === 'dev' ? { debug_code: otpCode } : {}),
     })
 
   } catch (error) {

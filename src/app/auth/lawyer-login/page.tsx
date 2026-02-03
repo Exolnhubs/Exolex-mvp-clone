@@ -203,8 +203,8 @@ const accData: AccountData = {
       setAccountData(accData)
       setMaskedPhone(maskPhone(accData.phone))
       setStep('otp')
-      if (otpChannel === 'dev' && result.channel === 'dev') {
-        toast.success(`وضع التجربة - رمز التحقق: ${result.debug_code}`, { duration: 10000 })
+      if (otpChannel === 'dev') {
+        toast.success('وضع التجربة: تحقق من وحدة التحكم (Console) للرمز', { duration: 5000 })
       } else {
         toast.success('تم إرسال رمز التحقق')
       }
