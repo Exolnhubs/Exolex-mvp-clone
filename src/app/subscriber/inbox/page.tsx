@@ -2,9 +2,10 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useRealtimeInsert, useRealtimeNotifications } from '@/hooks/useSupabaseRealtime'
 import { logoutMember } from '@/lib/auth'
 import { getUserId } from '@/lib/cookies'
 import Sidebar from '@/components/layout/Sidebar'
@@ -97,6 +98,60 @@ export default function CommunicationCenterPage() {
     priority: 'normal',
     content: '',
   })
+
+  // Realtime: listen for new client messages across all requests
+  useRealtimeInsert(
+    `client-messages-${memberId}`,
+    'request_client_messages',
+    undefined,
+    (newMsg: any) => {
+      // Update conversation if viewing the same request
+      if (selectedMessage && newMsg.request_id === selectedMessage.request_id) {
+        setConversationMessages(prev => {
+          if (prev.some(m => m.id === newMsg.id)) return prev
+          return [...prev, {
+            id: newMsg.id,
+            request_id: newMsg.request_id,
+            content: newMsg.content,
+            sender_type: newMsg.sender_type,
+            sender_name: newMsg.sender_name,
+            created_at: newMsg.created_at,
+            is_read: newMsg.is_read
+          }]
+        })
+      }
+      // Update inbox message list with latest message
+      if (newMsg.sender_type === 'lawyer') {
+        setMessages(prev => prev.map(m =>
+          m.request_id === newMsg.request_id
+            ? { ...m, content: newMsg.content, created_at: newMsg.created_at, sender_type: newMsg.sender_type, sender_name: newMsg.sender_name, is_read: false }
+            : m
+        ))
+      }
+    },
+    !!memberId
+  )
+
+  // Realtime: listen for new notifications
+  useRealtimeNotifications(
+    memberId,
+    'recipient_id',
+    (newNotif: any) => {
+      const formatted = {
+        id: newNotif.id,
+        type: newNotif.notification_type,
+        title: newNotif.title,
+        description: newNotif.body || '',
+        created_at: newNotif.created_at,
+        is_read: newNotif.is_read,
+        requires_action: ['document_required', 'poa_request'].includes(newNotif.notification_type),
+        action_url: newNotif.action_url || (newNotif.request_id ? `/subscriber/requests/${newNotif.request_id}` : undefined),
+        action_label: getActionLabel(newNotif.notification_type),
+        request_id: newNotif.request_id
+      }
+      setNotifications(prev => [formatted, ...prev])
+    }
+  )
 
   useEffect(() => {
     loadData()
@@ -314,25 +369,33 @@ export default function CommunicationCenterPage() {
   // إرسال رسالة للمحامي
   const handleSendMessage = async () => {
     if (!replyText.trim() || !selectedMessage) return
-
+    const messageText = replyText
+    // Optimistic update
+    const optimisticMsg = {
+      id: `temp-${Date.now()}`,
+      request_id: selectedMessage.request_id,
+      content: messageText,
+      sender_type: 'member' as const,
+      sender_name: user?.full_name || 'المشترك',
+      created_at: new Date().toISOString(),
+      is_read: false
+    }
+    setConversationMessages(prev => [...prev, optimisticMsg])
+    setReplyText('')
     try {
       const { error } = await supabase.from('request_client_messages').insert({
         request_id: selectedMessage.request_id,
         sender_id: memberId,
         sender_type: 'member',
         sender_name: user?.full_name || 'المشترك',
-        content: replyText,
+        content: messageText,
         is_read: false
       })
 
       if (error) throw error
-
-      // تحديث المحادثة
-      await loadConversation(selectedMessage.request_id)
-      setReplyText('')
-      toast.success('تم إرسال الرسالة')
-
     } catch (error) {
+      // Revert optimistic update
+      setConversationMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
       console.error('Error:', error)
       toast.error('حدث خطأ في إرسال الرسالة')
     }

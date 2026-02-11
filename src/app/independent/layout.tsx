@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useRealtimeNotifications } from '@/hooks/useSupabaseRealtime'
 import { getLawyerId } from '@/lib/cookies'
 import { Clock, CheckCircle, Send, RefreshCw } from 'lucide-react'
 import QuoteFormModal, { QuoteFormData } from '@/components/QuoteFormModal'
@@ -44,22 +45,40 @@ export default function IndependentLayout({ children }: { children: React.ReactN
   const [loadingRequests, setLoadingRequests] = useState(false)
   const [lawyerId, setLawyerId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [notificationCount] = useState(5)
+  const [notificationCount, setNotificationCount] = useState(0)
   const [showQuoteModal, setShowQuoteModal] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState<any>(null)
 
+  // Realtime: live notification count
+  useRealtimeNotifications(
+    lawyerId,
+    'recipient_id',
+    () => {
+      setNotificationCount(prev => prev + 1)
+    }
+  )
+
   useEffect(() => {
     const id = getLawyerId()
-    if (id) setLawyerId(id)
+    if (id) {
+      setLawyerId(id)
+      // Fetch initial unread notification count
+      supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('recipient_id', id)
+        .eq('is_read', false)
+        .then(({ count }) => setNotificationCount(count || 0))
+    }
     fetchAvailableRequests()
-        
-        const channel = supabase
+
+    const channel = supabase
       .channel('independent-requests')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'service_requests' }, () => {
         fetchAvailableRequests()
       })
       .subscribe()
-    
+
     return () => { supabase.removeChannel(channel) }
   }, [])
   const handleAcceptRequest = async (requestId: string) => {

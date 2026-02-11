@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { useRealtimeNotifications } from '@/hooks/useSupabaseRealtime'
 import { getLawyerId, getLegalArmId } from '@/lib/cookies'
 import { logoutLawyer, clearAuthCookies } from '@/lib/auth'
 import QuoteFormModal, { QuoteFormData } from '@/components/QuoteFormModal'
@@ -61,6 +62,16 @@ export default function LegalArmLawyerLayout({ children }: { children: React.Rea
   const [loadingRequests, setLoadingRequests] = useState(false)
   
   const isDashboard = pathname === '/legal-arm-lawyer/dashboard' || pathname === '/legal-arm-lawyer'
+
+  // Realtime: live notification count
+  useRealtimeNotifications(
+    lawyerInfo?.id || null,
+    'recipient_id',
+    () => {
+      setUnreadNotifications(prev => prev + 1)
+    }
+  )
+
 // Modal states
 const [showDetailModal, setShowDetailModal] = useState(false)
 const [showQuoteModal, setShowQuoteModal] = useState(false)

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useRealtimeInsert } from '@/hooks/useSupabaseRealtime'
 import toast from 'react-hot-toast'
 import { getLawyerId } from '@/lib/cookies'
 import {
@@ -99,6 +100,22 @@ export default function ArmLawyerRequestDetailsPage() {
   const isOwner = request?.assigned_lawyer_id === currentUser?.id
   const canRespond = isOwner && ['accepted', 'in_progress'].includes(request?.status)
   const canCloseRequest = isOwner
+
+  // Realtime: listen for new messages on this request
+  useRealtimeInsert(
+    `messages-${requestId}`,
+    'messages',
+    `request_id=eq.${requestId}`,
+    (newMsg: any) => {
+      if (!newMsg.private) {
+        setMessages(prev => {
+          if (prev.some(m => m.id === newMsg.id)) return prev
+          return [...prev, newMsg]
+        })
+      }
+    },
+    !!requestId
+  )
 
   useEffect(() => { loadData() }, [requestId])
 
@@ -284,19 +301,27 @@ export default function ArmLawyerRequestDetailsPage() {
       toast.error('لا يمكنك الرد الآن')
       return
     }
+    const messageText = newMessage
+    const optimisticMsg = {
+      id: `temp-${Date.now()}`,
+      request_id: requestId,
+      sender_id: currentUser?.id,
+      sender_type: 'lawyer',
+      content: messageText,
+      created_at: new Date().toISOString()
+    }
+    setMessages(prev => [...prev, optimisticMsg])
+    setNewMessage('')
     try {
       await supabase.from('messages').insert({
         request_id: requestId,
         sender_id: currentUser?.id,
         sender_type: 'lawyer',
-        content: newMessage
+        content: messageText
       })
-      
       await logActivity('send_message', 'إرسال رسالة للمشترك')
-      setNewMessage('')
-      loadData()
-      toast.success('✅ تم الإرسال')
     } catch (error) {
+      setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
       toast.error('حدث خطأ')
     }
   }
