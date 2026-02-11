@@ -6,12 +6,6 @@ import { supabase } from '@/lib/supabase'
 /**
  * Subscribe to Realtime INSERT events on a Supabase table.
  * Automatically cleans up the channel on unmount.
- *
- * @param channelName - Unique channel identifier
- * @param table - Supabase table name
- * @param filter - Optional filter string (e.g. "request_id=eq.abc-123")
- * @param onInsert - Callback with the new row
- * @param enabled - Set to false to skip subscription
  */
 export function useRealtimeInsert(
   channelName: string,
@@ -38,9 +32,15 @@ export function useRealtimeInsert(
     const channel = supabase
       .channel(channelName)
       .on('postgres_changes', config, (payload: any) => {
+        console.log(`[Realtime] ${channelName} received INSERT:`, payload.new)
         callbackRef.current(payload.new)
       })
-      .subscribe()
+      .subscribe((status: string, err?: Error) => {
+        console.log(`[Realtime] ${channelName} status: ${status}`, err || '')
+        if (status === 'CHANNEL_ERROR') {
+          console.error(`[Realtime] ${channelName} error - check that table "${table}" is added to supabase_realtime publication and RLS allows SELECT`)
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
@@ -50,11 +50,6 @@ export function useRealtimeInsert(
 
 /**
  * Subscribe to Realtime notification inserts for a specific recipient.
- * Calls onNewNotification whenever a new notification is inserted.
- *
- * @param recipientId - The user/member/lawyer ID to filter by
- * @param recipientField - Column name to filter on (default: "recipient_id")
- * @param onNewNotification - Callback with the new notification row
  */
 export function useRealtimeNotifications(
   recipientId: string | null,
@@ -75,9 +70,12 @@ export function useRealtimeNotifications(
         table: 'notifications',
         filter: `${recipientField}=eq.${recipientId}`,
       }, (payload: any) => {
+        console.log(`[Realtime] notifications received INSERT:`, payload.new)
         callbackRef.current(payload.new)
       })
-      .subscribe()
+      .subscribe((status: string, err?: Error) => {
+        console.log(`[Realtime] notifications-${recipientId} status: ${status}`, err || '')
+      })
 
     return () => {
       supabase.removeChannel(channel)
