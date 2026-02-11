@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '../../../../lib/supabase'
+import { useRealtimeInsert } from '@/hooks/useSupabaseRealtime'
 // Commented out due to missing module/type declaration
 import toast from 'react-hot-toast'
 import { getEmployeeId, getPartnerId } from '@/lib/cookies'
@@ -143,6 +144,38 @@ export default function PartnerRequestDetailsPage() {
   // ═══════════════════════════════════════════════════════════════════════════════
   // 📥 تحميل البيانات
   // ═══════════════════════════════════════════════════════════════════════════════
+
+  // Realtime: listen for new client messages
+  useRealtimeInsert(
+    `messages-${requestId}`,
+    'messages',
+    `request_id=eq.${requestId}`,
+    (newMsg: any) => {
+      if (!newMsg.private) {
+        setMessages(prev => {
+          if (prev.some(m => m.id === newMsg.id)) return prev
+          return [...prev, newMsg]
+        })
+      }
+    },
+    !!requestId
+  )
+
+  // Realtime: listen for new internal chat messages
+  useRealtimeInsert(
+    `internal-chat-${requestId}`,
+    'request_internal_chat',
+    `request_id=eq.${requestId}`,
+    (newMsg: any) => {
+      if (!newMsg.is_hidden) {
+        setInternalChat(prev => {
+          if (prev.some(m => m.id === newMsg.id)) return prev
+          return [...prev, newMsg]
+        })
+      }
+    },
+    !!requestId
+  )
 
   useEffect(() => { loadData() }, [requestId])
 
@@ -464,19 +497,27 @@ export default function PartnerRequestDetailsPage() {
       toast.error('لا يمكنك الرد - قم بتحويل الطلب لنفسك أولاً')
       return
     }
+    const messageText = newMessage
+    const optimisticMsg = {
+      id: `temp-${Date.now()}`,
+      request_id: requestId,
+      sender_id: currentUser?.id,
+      sender_type: 'lawyer',
+      content: messageText,
+      created_at: new Date().toISOString()
+    }
+    setMessages(prev => [...prev, optimisticMsg])
+    setNewMessage('')
     try {
       await supabase.from('messages').insert({
         request_id: requestId,
         sender_id: currentUser?.id,
         sender_type: 'lawyer',
-        content: newMessage
+        content: messageText
       })
-      
       await logActivity('send_message', 'إرسال رسالة للمشترك')
-      setNewMessage('')
-      loadData()
-      toast.success('✅ تم الإرسال')
     } catch (error) {
+      setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
       toast.error('حدث خطأ')
     }
   }
@@ -484,36 +525,49 @@ export default function PartnerRequestDetailsPage() {
   // إرسال رسالة داخلية مع دعم @mention
   const handleSendInternalMessage = async () => {
     if (!newInternalMessage.trim()) return
+    const messageText = newInternalMessage
     try {
       // استخراج mentions
       const mentionRegex = /@(\w+)/g
       const mentions: string[] = []
       let match
-      while ((match = mentionRegex.exec(newInternalMessage)) !== null) {
+      while ((match = mentionRegex.exec(messageText)) !== null) {
         const mentionedEmp = employees.find(e => e.full_name.includes(match[1]))
         if (mentionedEmp) mentions.push(mentionedEmp.id)
       }
+
+      // Optimistic update
+      const optimisticMsg = {
+        id: `temp-${Date.now()}`,
+        request_id: requestId,
+        sender_id: currentUser?.id,
+        sender_type: currentUser?.isManager ? 'manager' : 'lawyer',
+        sender_name: currentUser?.name,
+        content: messageText,
+        mentions,
+        created_at: new Date().toISOString()
+      }
+      setInternalChat(prev => [...prev, optimisticMsg])
+      setNewInternalMessage('')
+      setShowMentionList(false)
 
       await supabase.from('request_internal_chat').insert({
         request_id: requestId,
         sender_id: currentUser?.id,
         sender_type: currentUser?.isManager ? 'manager' : 'lawyer',
         sender_name: currentUser?.name,
-        content: newInternalMessage,
+        content: messageText,
         mentions: mentions
       })
-      
+
       await logActivity('internal_message', 'رسالة داخلية')
-      
+
       // إشعار المذكورين
       for (const mentionId of mentions) {
         await sendNotification(mentionId, 'تم ذكرك في محادثة', `ذكرك ${currentUser?.name} في طلب`, 'mention')
       }
-      
-      setNewInternalMessage('')
-      setShowMentionList(false)
-      loadData()
     } catch (error) {
+      setInternalChat(prev => prev.filter(m => !m.id.startsWith('temp-')))
       toast.error('حدث خطأ')
     }
   }

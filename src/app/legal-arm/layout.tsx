@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
+import { useRealtimeNotifications } from '@/hooks/useSupabaseRealtime'
+import { getLawyerId } from '@/lib/cookies'
 import { Calendar,
   LayoutDashboard, Users, Building2, Shield, Briefcase,
   FileText, Scale, UserCircle, Receipt, FileSignature,
@@ -60,6 +63,16 @@ export default function LegalArmLayout({ children }: { children: React.ReactNode
   const [expandedMenus, setExpandedMenus] = useState<string[]>(['إدارة الفريق', 'العمليات'])
   const [armData, setArmData] = useState<any>(null)
   const [unreadNotifications, setUnreadNotifications] = useState(0)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+  // Realtime: live notification count
+  useRealtimeNotifications(
+    currentUserId,
+    'recipient_id',
+    () => {
+      setUnreadNotifications(prev => prev + 1)
+    }
+  )
 
   useEffect(() => {
     const checkMobile = () => {
@@ -73,6 +86,16 @@ export default function LegalArmLayout({ children }: { children: React.ReactNode
 
   useEffect(() => {
     setArmData({ name_ar: 'الذراع القانوني', logo_url: null })
+    const id = getLawyerId()
+    if (id) {
+      setCurrentUserId(id)
+      supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('recipient_id', id)
+        .eq('is_read', false)
+        .then(({ count }) => setUnreadNotifications(count || 0))
+    }
   }, [])
 
   const toggleMenu = (label: string) => {

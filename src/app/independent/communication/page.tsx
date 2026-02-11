@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { 
-  Inbox, Bell, MessageSquare, RefreshCw, Eye, 
+import { useRealtimeInsert, useRealtimeNotifications } from '@/hooks/useSupabaseRealtime'
+import {
+  Inbox, Bell, MessageSquare, RefreshCw, Eye,
   CheckCircle, FileText, Calendar, CreditCard, AlertTriangle,
   Search, Send, Paperclip, DollarSign
 } from 'lucide-react'
@@ -91,6 +92,37 @@ export default function CommunicationPage() {
   const [supportTickets, setSupportTickets] = useState<any[]>([])
   const [showNewTicketModal, setShowNewTicketModal] = useState(false)
   const [newTicket, setNewTicket] = useState({ subject: '', message: '', category: 'technical' })
+
+  // Realtime: listen for new client messages
+  useRealtimeInsert(
+    `comm-client-msgs-${lawyerId}`,
+    'request_client_messages',
+    undefined,
+    (newMsg: any) => {
+      if (newMsg.sender_type !== 'lawyer') {
+        setMessages(prev => {
+          const existing = prev.find(m => m.request_id === newMsg.request_id)
+          if (existing) {
+            return prev.map(m => m.request_id === newMsg.request_id
+              ? { ...m, content: newMsg.content, created_at: newMsg.created_at, sender_name: newMsg.sender_name, is_read: false }
+              : m
+            )
+          }
+          return [{ ...newMsg, is_read: false }, ...prev]
+        })
+      }
+    },
+    !!lawyerId
+  )
+
+  // Realtime: listen for new notifications
+  useRealtimeNotifications(
+    lawyerId,
+    'recipient_id',
+    (newNotif: any) => {
+      setNotifications(prev => [newNotif, ...prev])
+    }
+  )
 
   // ═══════════════════════════════════════════════════════════════════════════════
   // Load Data

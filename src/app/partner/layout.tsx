@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
+import { useRealtimeNotifications } from '@/hooks/useSupabaseRealtime'
+import { getPartnerId } from '@/lib/cookies'
 import { Calendar,
   LayoutDashboard, Users, Building2, Briefcase, Shield,
   FileText, Scale, UserCircle, Receipt, FileSignature,
@@ -58,6 +61,16 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
   const [expandedMenus, setExpandedMenus] = useState<string[]>(['إدارة الفريق', 'العمليات'])
   const [partnerData, setPartnerData] = useState<any>(null)
   const [unreadNotifications, setUnreadNotifications] = useState(0)
+  const [partnerId, setPartnerId] = useState<string | null>(null)
+
+  // Realtime: live notification count
+  useRealtimeNotifications(
+    partnerId,
+    'recipient_id',
+    () => {
+      setUnreadNotifications(prev => prev + 1)
+    }
+  )
 
   useEffect(() => {
     const checkMobile = () => {
@@ -71,6 +84,16 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     setPartnerData({ company_name_ar: 'شركة المحاماة', logo_url: null })
+    const id = getPartnerId()
+    if (id) {
+      setPartnerId(id)
+      supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('recipient_id', id)
+        .eq('is_read', false)
+        .then(({ count }) => setUnreadNotifications(count || 0))
+    }
   }, [])
 
   const toggleMenu = (label: string) => {
