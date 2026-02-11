@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { getLawyerId } from '@/lib/cookies'
+import { useRealtimeInsert } from '@/hooks/useSupabaseRealtime'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📋 صفحة معالجة الطلب الكاملة - ExoLex
@@ -251,6 +252,35 @@ const [processingPoa, setProcessingPoa] = useState(false)
     recommendations: '',
     attachments: [] as any[]
   })
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Realtime Subscriptions
+  // ═══════════════════════════════════════════════════════════════════════════════
+  useRealtimeInsert(
+    `my-task-client-msgs-${requestId}`,
+    'request_client_messages',
+    `request_id=eq.${requestId}`,
+    (newMsg: any) => {
+      setClientMessages(prev => {
+        if (prev.some(m => m.id === newMsg.id)) return prev
+        return [...prev, newMsg]
+      })
+    },
+    !!requestId
+  )
+
+  useRealtimeInsert(
+    `my-task-internal-msgs-${requestId}`,
+    'request_internal_chat',
+    `request_id=eq.${requestId}`,
+    (newMsg: any) => {
+      setInternalMessages(prev => {
+        if (prev.some(m => m.id === newMsg.id)) return prev
+        return [...prev, newMsg]
+      })
+    },
+    !!requestId
+  )
 
   // ═══════════════════════════════════════════════════════════════════════════════
   // Data Loading
@@ -654,21 +684,32 @@ const handleRejectPoa = async () => {
   // Send message to client
   const handleSendClientMessage = async () => {
     if (!newClientMessage.trim()) return
+    const msgText = newClientMessage
+    const optimisticMsg: Message = {
+      id: `temp-${Date.now()}`,
+      content: msgText,
+      sender_id: currentLawyer?.user_id,
+      sender_type: 'lawyer',
+      sender_name: currentLawyer?.full_name || 'المحامي',
+      created_at: new Date().toISOString(),
+      is_read: false,
+    }
+    setClientMessages(prev => [...prev, optimisticMsg])
+    setNewClientMessage('')
 
     try {
-      await supabase.from('request_client_messages').insert({
+      const { error } = await supabase.from('request_client_messages').insert({
         request_id: requestId,
         sender_id: currentLawyer?.user_id,
         sender_type: 'lawyer',
         sender_name: currentLawyer?.full_name,
-        content: newClientMessage
+        content: msgText
       })
 
+      if (error) throw error
       await logActivity('send_client_message', 'إرسال رسالة للعميل')
-      setNewClientMessage('')
-      loadClientMessages()
-      toast.success('✅ تم الإرسال')
     } catch (error) {
+      setClientMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
       toast.error('حدث خطأ في الإرسال')
     }
   }
@@ -676,18 +717,30 @@ const handleRejectPoa = async () => {
   // Send internal message
   const handleSendInternalMessage = async () => {
     if (!newInternalMessage.trim()) return
+    const msgText = newInternalMessage
+    const optimisticMsg: Message = {
+      id: `temp-${Date.now()}`,
+      content: msgText,
+      sender_id: currentLawyer?.id,
+      sender_type: 'lawyer',
+      sender_name: currentLawyer?.full_name || 'المحامي',
+      created_at: new Date().toISOString(),
+      is_read: false,
+    }
+    setInternalMessages(prev => [...prev, optimisticMsg])
+    setNewInternalMessage('')
 
     try {
-      await supabase.from('request_internal_chat').insert({
+      const { error } = await supabase.from('request_internal_chat').insert({
         request_id: requestId,
         sender_id: currentLawyer?.id,
         sender_name: currentLawyer?.full_name,
-        content: newInternalMessage
+        content: msgText
       })
 
-      setNewInternalMessage('')
-      loadInternalMessages()
+      if (error) throw error
     } catch (error) {
+      setInternalMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
       toast.error('حدث خطأ في الإرسال')
     }
   }
