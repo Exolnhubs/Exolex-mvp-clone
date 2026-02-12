@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { getLawyerId } from '@/lib/cookies'
-import { useRealtimeInsert } from '@/hooks/useSupabaseRealtime'
+import { useRealtimeChat } from '@/hooks/useSupabaseRealtime'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📋 صفحة معالجة الطلب الكاملة - محامي الذراع القانوني
@@ -260,29 +260,27 @@ export default function ArmLawyerRequestProcessingPage() {
   })
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // Realtime Subscriptions
+  // Realtime Broadcast Subscriptions
   // ═══════════════════════════════════════════════════════════════════════════════
-  useRealtimeInsert(
-    `arm-lawyer-client-msgs-${requestId}`,
-    'request_client_messages',
-    `request_id=eq.${requestId}`,
-    (newMsg: any) => {
+  const { broadcast: broadcastClientMsg } = useRealtimeChat(
+    requestId,
+    'client',
+    (msg: any) => {
       setClientMessages(prev => {
-        if (prev.some(m => m.id === newMsg.id)) return prev
-        return [...prev, newMsg]
+        if (prev.some(m => m.id === msg.id)) return prev
+        return [...prev, msg]
       })
     },
     !!requestId
   )
 
-  useRealtimeInsert(
-    `arm-lawyer-internal-msgs-${requestId}`,
-    'request_internal_chat',
-    `request_id=eq.${requestId}`,
-    (newMsg: any) => {
+  const { broadcast: broadcastInternalMsg } = useRealtimeChat(
+    requestId,
+    'internal',
+    (msg: any) => {
       setInternalMessages(prev => {
-        if (prev.some(m => m.id === newMsg.id)) return prev
-        return [...prev, newMsg]
+        if (prev.some(m => m.id === msg.id)) return prev
+        return [...prev, msg]
       })
     },
     !!requestId
@@ -730,6 +728,7 @@ export default function ArmLawyerRequestProcessingPage() {
       })
 
       if (error) throw error
+      broadcastClientMsg({ ...optimisticMsg, id: `broadcast-${Date.now()}` })
       await logActivity('send_client_message', 'إرسال رسالة للعميل')
     } catch (error) {
       setClientMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
@@ -762,6 +761,7 @@ export default function ArmLawyerRequestProcessingPage() {
       })
 
       if (error) throw error
+      broadcastInternalMsg({ ...optimisticMsg, id: `broadcast-${Date.now()}` })
     } catch (error) {
       setInternalMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
       toast.error('حدث خطأ في الإرسال')

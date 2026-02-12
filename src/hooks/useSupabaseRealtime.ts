@@ -1,57 +1,65 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { RealtimePostgresInsertPayload } from '@supabase/supabase-js'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
 /**
- * Subscribe to Realtime INSERT events on a Supabase table.
- * Automatically cleans up the channel on unmount.
+ * Realtime chat hook using Supabase Broadcast.
+ * Both parties join the same channel. When one sends a message,
+ * the other receives it instantly via WebSocket broadcast.
+ *
+ * Returns a `broadcast` function to send messages to the channel.
  */
-export function useRealtimeInsert(
-  channelName: string,
-  table: string,
-  filter: string | undefined,
-  onInsert: (newRow: any) => void,
+export function useRealtimeChat(
+  requestId: string | null,
+  eventName: string,
+  onMessage: (msg: any) => void,
   enabled: boolean = true
 ) {
-  const callbackRef = useRef(onInsert)
-  callbackRef.current = onInsert
+  const channelRef = useRef<RealtimeChannel | null>(null)
+  const callbackRef = useRef(onMessage)
+  callbackRef.current = onMessage
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !requestId) return
 
+    const channelName = `chat-${eventName}-${requestId}`
     const channel = supabase.channel(channelName)
 
-    channel.on(
-      'postgres_changes' as any,
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table,
-        ...(filter ? { filter } : {}),
-      },
-      (payload: RealtimePostgresInsertPayload<{ [key: string]: any }>) => {
-        console.log(`[Realtime] ${channelName} received INSERT:`, payload.new)
-        callbackRef.current(payload.new)
-      }
-    )
+    channel.on('broadcast', { event: 'new-message' }, (payload: any) => {
+      console.log(`[Broadcast] ${channelName} received:`, payload.payload)
+      callbackRef.current(payload.payload)
+    })
 
     channel.subscribe((status: string, err?: Error) => {
-      console.log(`[Realtime] ${channelName} status: ${status}`, err || '')
-      if (status === 'CHANNEL_ERROR') {
-        console.error(`[Realtime] ${channelName} error - check that table "${table}" is added to supabase_realtime publication and RLS allows SELECT`)
-      }
+      console.log(`[Broadcast] ${channelName} status: ${status}`, err || '')
     })
+
+    channelRef.current = channel
 
     return () => {
       supabase.removeChannel(channel)
+      channelRef.current = null
     }
-  }, [channelName, table, filter, enabled])
+  }, [requestId, eventName, enabled])
+
+  const broadcast = useCallback((message: any) => {
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'new-message',
+        payload: message,
+      })
+    }
+  }, [])
+
+  return { broadcast }
 }
 
 /**
- * Subscribe to Realtime notification inserts for a specific recipient.
+ * Keep the old hooks for notification badges (they work on some setups).
+ * Can be removed once broadcast is confirmed working everywhere.
  */
 export function useRealtimeNotifications(
   recipientId: string | null,
@@ -74,15 +82,12 @@ export function useRealtimeNotifications(
         table: 'notifications',
         filter: `${recipientField}=eq.${recipientId}`,
       },
-      (payload: RealtimePostgresInsertPayload<{ [key: string]: any }>) => {
-        console.log(`[Realtime] notifications received INSERT:`, payload.new)
+      (payload: any) => {
         callbackRef.current(payload.new)
       }
     )
 
-    channel.subscribe((status: string, err?: Error) => {
-      console.log(`[Realtime] notifications-${recipientId} status: ${status}`, err || '')
-    })
+    channel.subscribe()
 
     return () => {
       supabase.removeChannel(channel)

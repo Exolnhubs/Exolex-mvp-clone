@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { useRealtimeInsert, useRealtimeNotifications } from '@/hooks/useSupabaseRealtime'
+import { useRealtimeChat, useRealtimeNotifications } from '@/hooks/useSupabaseRealtime'
 import { logoutMember } from '@/lib/auth'
 import { getUserId } from '@/lib/cookies'
 import Sidebar from '@/components/layout/Sidebar'
@@ -99,37 +99,25 @@ export default function CommunicationCenterPage() {
     content: '',
   })
 
-  // Realtime: listen for new client messages across all requests
-  useRealtimeInsert(
-    `client-messages-${memberId}`,
-    'request_client_messages',
-    undefined,
-    (newMsg: any) => {
-      // Update conversation if viewing the same request
-      if (selectedMessage && newMsg.request_id === selectedMessage.request_id) {
-        setConversationMessages(prev => {
-          if (prev.some(m => m.id === newMsg.id)) return prev
-          return [...prev, {
-            id: newMsg.id,
-            request_id: newMsg.request_id,
-            content: newMsg.content,
-            sender_type: newMsg.sender_type,
-            sender_name: newMsg.sender_name,
-            created_at: newMsg.created_at,
-            is_read: newMsg.is_read
-          }]
-        })
-      }
+  // Realtime: listen for new client messages via broadcast
+  const { broadcast: broadcastClientMsg } = useRealtimeChat(
+    selectedMessage?.request_id || null,
+    'client',
+    (msg: any) => {
+      setConversationMessages(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev
+        return [...prev, msg]
+      })
       // Update inbox message list with latest message
-      if (newMsg.sender_type === 'lawyer') {
+      if (msg.sender_type === 'lawyer') {
         setMessages(prev => prev.map(m =>
-          m.request_id === newMsg.request_id
-            ? { ...m, content: newMsg.content, created_at: newMsg.created_at, sender_type: newMsg.sender_type, sender_name: newMsg.sender_name, is_read: false }
+          m.request_id === msg.request_id
+            ? { ...m, content: msg.content, created_at: msg.created_at, sender_type: msg.sender_type, sender_name: msg.sender_name, is_read: false }
             : m
         ))
       }
     },
-    !!memberId
+    !!selectedMessage?.request_id
   )
 
   // Realtime: listen for new notifications
@@ -393,6 +381,8 @@ export default function CommunicationCenterPage() {
       })
 
       if (error) throw error
+      // Broadcast to lawyer watching this request
+      broadcastClientMsg({ ...optimisticMsg, id: `broadcast-${Date.now()}` })
     } catch (error) {
       // Revert optimistic update
       setConversationMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))

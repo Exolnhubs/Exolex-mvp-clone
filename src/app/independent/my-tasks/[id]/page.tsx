@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { getLawyerId } from '@/lib/cookies'
-import { useRealtimeInsert } from '@/hooks/useSupabaseRealtime'
+import { useRealtimeChat } from '@/hooks/useSupabaseRealtime'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📋 صفحة معالجة الطلب الكاملة - ExoLex
@@ -254,29 +254,27 @@ const [processingPoa, setProcessingPoa] = useState(false)
   })
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // Realtime Subscriptions
+  // Realtime Broadcast Subscriptions
   // ═══════════════════════════════════════════════════════════════════════════════
-  useRealtimeInsert(
-    `my-task-client-msgs-${requestId}`,
-    'request_client_messages',
-    `request_id=eq.${requestId}`,
-    (newMsg: any) => {
+  const { broadcast: broadcastClientMsg } = useRealtimeChat(
+    requestId,
+    'client',
+    (msg: any) => {
       setClientMessages(prev => {
-        if (prev.some(m => m.id === newMsg.id)) return prev
-        return [...prev, newMsg]
+        if (prev.some(m => m.id === msg.id)) return prev
+        return [...prev, msg]
       })
     },
     !!requestId
   )
 
-  useRealtimeInsert(
-    `my-task-internal-msgs-${requestId}`,
-    'request_internal_chat',
-    `request_id=eq.${requestId}`,
-    (newMsg: any) => {
+  const { broadcast: broadcastInternalMsg } = useRealtimeChat(
+    requestId,
+    'internal',
+    (msg: any) => {
       setInternalMessages(prev => {
-        if (prev.some(m => m.id === newMsg.id)) return prev
-        return [...prev, newMsg]
+        if (prev.some(m => m.id === msg.id)) return prev
+        return [...prev, msg]
       })
     },
     !!requestId
@@ -707,6 +705,8 @@ const handleRejectPoa = async () => {
       })
 
       if (error) throw error
+      // Broadcast to other tabs/users watching this request
+      broadcastClientMsg({ ...optimisticMsg, id: `broadcast-${Date.now()}` })
       await logActivity('send_client_message', 'إرسال رسالة للعميل')
     } catch (error) {
       setClientMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
@@ -739,6 +739,7 @@ const handleRejectPoa = async () => {
       })
 
       if (error) throw error
+      broadcastInternalMsg({ ...optimisticMsg, id: `broadcast-${Date.now()}` })
     } catch (error) {
       setInternalMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
       toast.error('حدث خطأ في الإرسال')
