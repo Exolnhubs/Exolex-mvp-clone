@@ -27,7 +27,7 @@ interface Message {
   request_id: string
   ticket_number?: string
   content: string
-  sender_type: 'lawyer' | 'member'
+  sender_type: 'lawyer' | 'member' | 'client'
   sender_name: string
   created_at: string
   is_read: boolean
