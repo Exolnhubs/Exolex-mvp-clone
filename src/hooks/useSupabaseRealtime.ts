@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import type { RealtimePostgresInsertPayload } from '@supabase/supabase-js'
 
 /**
  * Subscribe to Realtime INSERT events on a Supabase table.
@@ -20,27 +21,28 @@ export function useRealtimeInsert(
   useEffect(() => {
     if (!enabled) return
 
-    const config: Record<string, any> = {
-      event: 'INSERT',
-      schema: 'public',
-      table,
-    }
-    if (filter) {
-      config.filter = filter
-    }
+    const channel = supabase.channel(channelName)
 
-    const channel = supabase
-      .channel(channelName)
-      .on('postgres_changes', config, (payload: any) => {
+    channel.on(
+      'postgres_changes' as any,
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table,
+        ...(filter ? { filter } : {}),
+      },
+      (payload: RealtimePostgresInsertPayload<{ [key: string]: any }>) => {
         console.log(`[Realtime] ${channelName} received INSERT:`, payload.new)
         callbackRef.current(payload.new)
-      })
-      .subscribe((status: string, err?: Error) => {
-        console.log(`[Realtime] ${channelName} status: ${status}`, err || '')
-        if (status === 'CHANNEL_ERROR') {
-          console.error(`[Realtime] ${channelName} error - check that table "${table}" is added to supabase_realtime publication and RLS allows SELECT`)
-        }
-      })
+      }
+    )
+
+    channel.subscribe((status: string, err?: Error) => {
+      console.log(`[Realtime] ${channelName} status: ${status}`, err || '')
+      if (status === 'CHANNEL_ERROR') {
+        console.error(`[Realtime] ${channelName} error - check that table "${table}" is added to supabase_realtime publication and RLS allows SELECT`)
+      }
+    })
 
     return () => {
       supabase.removeChannel(channel)
@@ -62,20 +64,25 @@ export function useRealtimeNotifications(
   useEffect(() => {
     if (!recipientId) return
 
-    const channel = supabase
-      .channel(`notifications-${recipientId}`)
-      .on('postgres_changes', {
+    const channel = supabase.channel(`notifications-${recipientId}`)
+
+    channel.on(
+      'postgres_changes' as any,
+      {
         event: 'INSERT',
         schema: 'public',
         table: 'notifications',
         filter: `${recipientField}=eq.${recipientId}`,
-      }, (payload: any) => {
+      },
+      (payload: RealtimePostgresInsertPayload<{ [key: string]: any }>) => {
         console.log(`[Realtime] notifications received INSERT:`, payload.new)
         callbackRef.current(payload.new)
-      })
-      .subscribe((status: string, err?: Error) => {
-        console.log(`[Realtime] notifications-${recipientId} status: ${status}`, err || '')
-      })
+      }
+    )
+
+    channel.subscribe((status: string, err?: Error) => {
+      console.log(`[Realtime] notifications-${recipientId} status: ${status}`, err || '')
+    })
 
     return () => {
       supabase.removeChannel(channel)
