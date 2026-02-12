@@ -358,12 +358,13 @@ export default function CommunicationCenterPage() {
   const handleSendMessage = async () => {
     if (!replyText.trim() || !selectedMessage) return
     const messageText = replyText
+    const userId = getUserId()
     // Optimistic update
     const optimisticMsg = {
       id: `temp-${Date.now()}`,
       request_id: selectedMessage.request_id,
       content: messageText,
-      sender_type: 'member' as const,
+      sender_type: 'client' as const,
       sender_name: user?.full_name || 'المشترك',
       created_at: new Date().toISOString(),
       is_read: false
@@ -373,8 +374,8 @@ export default function CommunicationCenterPage() {
     try {
       const { error } = await supabase.from('request_client_messages').insert({
         request_id: selectedMessage.request_id,
-        sender_id: memberId,
-        sender_type: 'member',
+        sender_id: userId,
+        sender_type: 'client',
         sender_name: user?.full_name || 'المشترك',
         content: messageText,
         is_read: false
