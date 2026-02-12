@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRealtimeInsert, useRealtimeNotifications } from '@/hooks/useSupabaseRealtime'
+import { useRealtimeChat, useRealtimeNotifications } from '@/hooks/useSupabaseRealtime'
 import {
   Inbox, Bell, MessageSquare, RefreshCw, Eye,
   CheckCircle, FileText, Calendar, CreditCard, AlertTriangle,
@@ -84,10 +84,9 @@ export default function CommunicationPage() {
   const [newTicket, setNewTicket] = useState({ subject: '', message: '', category: 'technical' })
 
   // Realtime: listen for new client messages
-  useRealtimeInsert(
-    `comm-client-msgs-${lawyerId}`,
-    'request_client_messages',
-    undefined,
+  useRealtimeChat(
+    lawyerId,
+    'client',
     (newMsg: any) => {
       if (newMsg.sender_type !== 'lawyer') {
         setMessages(prev => {

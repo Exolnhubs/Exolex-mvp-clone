@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { useRealtimeInsert } from '@/hooks/useSupabaseRealtime'
+import { useRealtimeChat } from '@/hooks/useSupabaseRealtime'
 import toast from 'react-hot-toast'
 import { getLawyerId } from '@/lib/cookies'
 import {
@@ -122,15 +122,14 @@ export default function LegalArmRequestDetailsPage() {
   const canCloseRequest = isOwner
 
   // Realtime: listen for new client messages
-  useRealtimeInsert(
-    `messages-${requestId}`,
+  const { broadcast: broadcastMsg } = useRealtimeChat(
+    requestId,
     'messages',
-    `request_id=eq.${requestId}`,
-    (newMsg: any) => {
-      if (!newMsg.private) {
+    (msg: any) => {
+      if (!msg.private) {
         setMessages(prev => {
-          if (prev.some(m => m.id === newMsg.id)) return prev
-          return [...prev, newMsg]
+          if (prev.some(m => m.id === msg.id)) return prev
+          return [...prev, msg]
         })
       }
     },
@@ -138,15 +137,14 @@ export default function LegalArmRequestDetailsPage() {
   )
 
   // Realtime: listen for new internal chat messages
-  useRealtimeInsert(
-    `internal-chat-${requestId}`,
-    'request_internal_chat',
-    `request_id=eq.${requestId}`,
-    (newMsg: any) => {
-      if (!newMsg.is_hidden) {
+  const { broadcast: broadcastInternal } = useRealtimeChat(
+    requestId,
+    'internal',
+    (msg: any) => {
+      if (!msg.is_hidden) {
         setInternalChat(prev => {
-          if (prev.some(m => m.id === newMsg.id)) return prev
-          return [...prev, newMsg]
+          if (prev.some(m => m.id === msg.id)) return prev
+          return [...prev, msg]
         })
       }
     },
@@ -485,12 +483,14 @@ export default function LegalArmRequestDetailsPage() {
     setMessages(prev => [...prev, optimisticMsg])
     setNewMessage('')
     try {
-      await supabase.from('messages').insert({
+      const { error } = await supabase.from('messages').insert({
         request_id: requestId,
         sender_id: currentUser?.id,
         sender_type: 'lawyer',
         content: messageText
       })
+      if (error) throw error
+      broadcastMsg({ ...optimisticMsg, id: `broadcast-${Date.now()}` })
       await logActivity('send_message', 'إرسال رسالة للمشترك')
     } catch (error) {
       setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
@@ -526,7 +526,7 @@ export default function LegalArmRequestDetailsPage() {
       setNewInternalMessage('')
       setShowMentionList(false)
 
-      await supabase.from('request_internal_chat').insert({
+      const { error } = await supabase.from('request_internal_chat').insert({
         request_id: requestId,
         sender_id: currentUser?.id,
         sender_type: currentUser?.isManager ? 'manager' : 'lawyer',
@@ -534,6 +534,8 @@ export default function LegalArmRequestDetailsPage() {
         content: messageText,
         mentions: mentions
       })
+      if (error) throw error
+      broadcastInternal({ ...optimisticMsg, id: `broadcast-${Date.now()}` })
 
       await logActivity('internal_message', 'رسالة داخلية')
 

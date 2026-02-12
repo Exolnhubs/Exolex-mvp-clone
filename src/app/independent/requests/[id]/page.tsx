@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { useRealtimeInsert } from '@/hooks/useSupabaseRealtime'
+import { useRealtimeChat } from '@/hooks/useSupabaseRealtime'
 import toast from 'react-hot-toast'
 import { getLawyerId } from '@/lib/cookies'
 import {
@@ -102,15 +102,14 @@ export default function IndependentRequestDetailsPage() {
   const canCloseRequest = isOwner
 
   // Realtime: listen for new messages on this request
-  useRealtimeInsert(
-    `messages-${requestId}`,
+  const { broadcast: broadcastMsg } = useRealtimeChat(
+    requestId,
     'messages',
-    `request_id=eq.${requestId}`,
-    (newMsg: any) => {
-      if (!newMsg.private) {
+    (msg: any) => {
+      if (!msg.private) {
         setMessages(prev => {
-          if (prev.some(m => m.id === newMsg.id)) return prev
-          return [...prev, newMsg]
+          if (prev.some(m => m.id === msg.id)) return prev
+          return [...prev, msg]
         })
       }
     },
@@ -314,12 +313,14 @@ export default function IndependentRequestDetailsPage() {
     setMessages(prev => [...prev, optimisticMsg])
     setNewMessage('')
     try {
-      await supabase.from('messages').insert({
+      const { error } = await supabase.from('messages').insert({
         request_id: requestId,
         sender_id: currentUser?.id,
         sender_type: 'lawyer',
         content: messageText
       })
+      if (error) throw error
+      broadcastMsg({ ...optimisticMsg, id: `broadcast-${Date.now()}` })
 
       await logActivity('send_message', 'إرسال رسالة للمشترك')
     } catch (error) {
