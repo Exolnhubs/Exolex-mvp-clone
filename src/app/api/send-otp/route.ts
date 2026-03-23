@@ -28,6 +28,15 @@ const OTP_REQUEST_SCHEMA = {
 export async function POST(request: NextRequest) {
   const ctx = createRequestContext(request)
 
+  // Verify required env vars are configured
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    logger.error(ctx, new Error('Missing Supabase env vars: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set'))
+    return NextResponse.json(
+      { success: false, error: 'Server configuration error', requestId: ctx.requestId },
+      { status: 500 }
+    )
+  }
+
   try {
     // Parse and validate request body
     let body: Record<string, unknown>
